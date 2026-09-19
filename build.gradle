@@ -65,6 +65,9 @@ minecraft {
         configureEach {
             workingDirectory project.file('run')
 
+            // Load our own mixin config in dev runs (production reads it from the jar manifest)
+            arg "-mixin.config=heart_of_scales.mixins.json"
+
             // Recommended logging data for a userdev environment
             // The markers can be added/remove as needed separated by commas.
             // "SCAN": For mods scan.
@@ -147,6 +150,9 @@ repositories {
 }
 
 dependencies {
+    // Generates heart_of_scales.refmap.json so our mixin targets resolve in the obfuscated release jar
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+
     // Specify the version of Minecraft to use.
     // Any artifact can be supplied so long as it has a "userdev" classifier artifact and is a compatible patcher artifact.
     // The "userdev" classifier will be requested and setup by ForgeGradle.
@@ -201,6 +207,11 @@ tasks.named('processResources', ProcessResources).configure {
     filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
         expand replaceProperties + [project: project]
     }
+}
+
+mixin {
+    add sourceSets.main, 'heart_of_scales.refmap.json'
+    config 'heart_of_scales.mixins.json'
 }
 
 // Example for how to get properties into the manifest for reading at runtime.

@@ -43,5 +43,12 @@
   "command.heart_of_scales.follow": "Following",
   "command.heart_of_scales.sit": "Sitting",
   "command.heart_of_scales.wander": "Wandering",
-  "hatch.heart_of_scales.needs.dim": "This egg needs dim light to hatch (light level 7 or lower)"
+  "hatch.heart_of_scales.needs.dim": "This egg needs dim light to hatch (light level 7 or lower)",
+  "item.heart_of_scales.dragon-saddle": "Dragon Saddle",
+  "container.heart_of_scales.dragon": "Dragon",
+  "key.categories.heart_of_scales": "Heart of Scales",
+  "key.heart_of_scales.ascend": "Dragon Ascend",
+  "key.heart_of_scales.flight-mode": "Toggle Flight Mode",
+  "flight_mode.heart_of_scales.free": "Flight mode: Free",
+  "flight_mode.heart_of_scales.glide": "Flight mode: Glide"
 }

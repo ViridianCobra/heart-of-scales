@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "net.basilisk.heartofscales.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "heart_of_scales.refmap.json",
+  "client": [
+    "client.CameraMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

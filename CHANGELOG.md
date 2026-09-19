@@ -15,3 +15,8 @@ When a version is released, drop "(Unreleased)" from its heading and start the n
 - Nest structures generate after ores, stone blobs and vegetation, so their blocks are no longer replaced and trees do not grow inside them.
 - Forest nest structure generating on the surface in forest and birch biomes.
 - Glowing mushroom block, light level 9, placeable on any solid block. Placeholder brown mushroom texture.
+- Breeding. Feed two tamed dragons of the same parent species amorberries and they lay an egg with one parent's subspecies, into a nearby empty nest if there is one, else on the ground beside them.
+- Flight for air dragons (plains, mountain). Idle dragons take off, sweep around and land on their own. Dragons never take fall damage.
+- Dragon saddle item and a horse-style dragon inventory, opened by the owner with a crouch right-click.
+- Riding. The owner mounts a saddled dragon and steers on the ground with the usual keys. On air dragons, hold Ascend (Space) to take off and fly where you look; fly into the ground to land. Toggle Flight Mode (G) switches between free flight and glide, where dives build speed, climbs bleed it and the dragon banks into turns.
+- Third-person camera pulls back while flying (client config `flightCamera` to disable or adjust).

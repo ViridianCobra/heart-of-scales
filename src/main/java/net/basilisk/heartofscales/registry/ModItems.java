@@ -45,5 +45,8 @@ public final class ModItems {
     public static final RegistryObject<Item> DRAGON_STAFF = ITEMS.register("dragon-staff",
             () -> new DragonStaffItem(new Item.Properties().stacksTo(1)));
 
+    public static final RegistryObject<Item> DRAGON_SADDLE = ITEMS.register("dragon-saddle",
+            () -> new Item(new Item.Properties().stacksTo(1)));
+
     private ModItems() {}
 }
