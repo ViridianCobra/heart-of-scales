@@ -13,7 +13,7 @@ import net.minecraftforge.registries.ForgeRegistries;
  * One subspecies, loaded from data/<ns>/heart_of_scales/dragon_species/<name>.json.
  * Fields grow as the spec needs them (favourite food, hatch condition, habitat...).
  */
-public record DragonSpecies(SpeciesGroup species, int eggTint, TagKey<Item> foods, Item favouriteFood, HatchCondition hatchCondition) {
+public record DragonSpecies(SpeciesGroup species, boolean flies, int eggTint, TagKey<Item> foods, Item favouriteFood, HatchCondition hatchCondition) {
     public boolean isFavouriteFood(ItemStack stack) {
         return stack.is(favouriteFood);
     }
@@ -34,6 +34,7 @@ public record DragonSpecies(SpeciesGroup species, int eggTint, TagKey<Item> food
 
     public static final Codec<DragonSpecies> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             SpeciesGroup.CODEC.fieldOf("species").forGetter(DragonSpecies::species),
+            Codec.BOOL.optionalFieldOf("flies", false).forGetter(DragonSpecies::flies),
             HEX_COLOUR.fieldOf("egg_tint").forGetter(DragonSpecies::eggTint),
             TagKey.codec(Registries.ITEM).fieldOf("foods").forGetter(DragonSpecies::foods),
             ForgeRegistries.ITEMS.getCodec().fieldOf("favourite_food").forGetter(DragonSpecies::favouriteFood),

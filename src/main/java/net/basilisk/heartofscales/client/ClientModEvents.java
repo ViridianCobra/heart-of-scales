@@ -10,6 +10,10 @@ import net.basilisk.heartofscales.registry.ModBlocks;
 import net.basilisk.heartofscales.registry.ModEntities;
 import net.basilisk.heartofscales.registry.ModItems;
 import net.basilisk.heartofscales.client.entity.DragonRenderer;
+import net.basilisk.heartofscales.client.screen.DragonScreen;
+import net.basilisk.heartofscales.registry.ModMenuTypes;
+import net.minecraft.client.gui.screens.MenuScreens;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.client.event.EntityRenderersEvent;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -48,6 +52,11 @@ public final class ClientModEvents {
     @SubscribeEvent
     public static void registerEntityRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(ModEntities.DRAGON.get(), DragonRenderer::new);
+    }
+
+    @SubscribeEvent
+    public static void clientSetup(FMLClientSetupEvent event) {
+        event.enqueueWork(() -> MenuScreens.register(ModMenuTypes.DRAGON.get(), DragonScreen::new));
     }
 
     @SubscribeEvent
