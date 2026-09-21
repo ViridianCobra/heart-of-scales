@@ -9,6 +9,7 @@ import net.minecraft.client.CameraType;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.event.TickEvent;
@@ -33,6 +34,8 @@ public final class RiderInputHandler {
     private static boolean lastAscending;
     private static boolean lastDescending;
     private static boolean lastFreeCam;
+    /** Free cam is toggled by its key; it only means anything in the air, so landing and dismounting clear it. */
+    private static boolean freeCamOn;
     /** Camera the player had before riding forced third person; null when nothing was forced. */
     @Nullable
     private static CameraType cameraBeforeRiding;
@@ -49,6 +52,9 @@ public final class RiderInputHandler {
             lastAscending = false;
             lastDescending = false;
             lastFreeCam = false;
+            freeCamOn = false;
+            // A press made off the dragon must not flip free cam on the next mount
+            while (ModKeyMappings.FREE_CAM.consumeClick()) {}
             restoreCamera(minecraft);
             return;
         }
@@ -56,7 +62,15 @@ public final class RiderInputHandler {
 
         boolean ascending = ModKeyMappings.ASCEND.isDown();
         boolean descending = ModKeyMappings.DESCEND.isDown();
-        boolean freeCam = ModKeyMappings.FREE_CAM.isDown();
+        boolean freeCamClicked = false;
+        while (ModKeyMappings.FREE_CAM.consumeClick()) freeCamClicked = !freeCamClicked;
+        if (!dragon.isFlying()) {
+            freeCamOn = false;
+        } else if (freeCamClicked) {
+            freeCamOn = !freeCamOn;
+            player.displayClientMessage(Component.translatable("free_cam." + HeartOfScales.MOD_ID + (freeCamOn ? ".on" : ".off")), true);
+        }
+        boolean freeCam = freeCamOn;
         boolean toggleMode = ModKeyMappings.FLIGHT_MODE.consumeClick();
         dragon.setRiderAscending(ascending);
         dragon.setRiderDescending(descending);

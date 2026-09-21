@@ -51,7 +51,9 @@
   "key.heart_of_scales.ascend": "Dragon Ascend",
   "key.heart_of_scales.descend": "Dragon Descend",
   "key.heart_of_scales.flight-mode": "Toggle Flight Mode",
-  "key.heart_of_scales.free-cam": "Dragon Free Cam (hold)",
+  "key.heart_of_scales.free-cam": "Toggle Dragon Free Cam",
+  "free_cam.heart_of_scales.on": "Free cam: On",
+  "free_cam.heart_of_scales.off": "Free cam: Off",
   "flight_mode.heart_of_scales.free": "Flight mode: Free",
   "flight_mode.heart_of_scales.glide": "Flight mode: Glide"
 }

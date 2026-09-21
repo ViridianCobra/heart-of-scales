@@ -135,7 +135,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
      * cruise the loss grows with speed, so a fast sweep upward sheds its extra speed quickly, then eases off.
      */
     private static final double GLIDE_CLIMB_DECEL = 0.042;
-    // Free cam: while the key is held the body ignores the rider's look and keeps its own heading, so the mouse
+    // Free cam: while it is switched on the body ignores the rider's look and keeps its own heading, so the mouse
     // is left to the camera. Gliding, W and S pitch that heading and A and D bank into a turn; the turn rate ramps
     // so the visual roll, which comes from the yaw rate, leans in and out like a plane.
     private static final float FREE_CAM_KEY_PITCH_RATE = 2.5f;
@@ -144,7 +144,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     /** Stalled in free cam, the assist tips the body itself into a dive, since the look no longer steers it. */
     private static final float FREE_CAM_STALL_ASSIST_PITCH = 30.0f;
     private static final float FREE_CAM_STALL_ASSIST_RATE = 4.0f;
-    /** After free cam is released in free flight the body swings to the look at this rate instead of snapping. */
+    /** After free cam is switched off in free flight the body swings to the look at this rate instead of snapping. */
     private static final float FREE_CAM_RELEASE_TURN_RATE = 8.0f;
     /** How far the head may turn from the body to follow the rider's look in free cam, degrees. */
     private static final float FREE_CAM_HEAD_YAW_LIMIT = 70.0f;
