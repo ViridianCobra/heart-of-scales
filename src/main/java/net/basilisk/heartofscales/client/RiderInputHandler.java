@@ -34,6 +34,7 @@ public final class RiderInputHandler {
     private static boolean lastAscending;
     private static boolean lastDescending;
     private static boolean lastFreeCam;
+    private static boolean lastSprinting;
     /** Free cam is toggled by its key; it only means anything in the air, so landing and dismounting clear it. */
     private static boolean freeCamOn;
     /** Camera the player had before riding forced third person; null when nothing was forced. */
@@ -52,6 +53,7 @@ public final class RiderInputHandler {
             lastAscending = false;
             lastDescending = false;
             lastFreeCam = false;
+            lastSprinting = false;
             freeCamOn = false;
             // A press made off the dragon must not flip free cam on the next mount
             while (ModKeyMappings.FREE_CAM.consumeClick()) {}
@@ -74,9 +76,14 @@ public final class RiderInputHandler {
         boolean toggleMode = ModKeyMappings.FLIGHT_MODE.consumeClick();
         dragon.setRiderAscending(ascending);
         dragon.setRiderDescending(descending);
+        // Vanilla's own Sprint key, so the hold-or-toggle accessibility option applies to dragons too
+        boolean sprinting = minecraft.options.keySprint.isDown();
         dragon.setRiderFreeCam(freeCam);
-        if (ascending != lastAscending || descending != lastDescending || freeCam != lastFreeCam || toggleMode) {
-            ModNetwork.CHANNEL.sendToServer(new RiderInputPacket(ascending, descending, freeCam, toggleMode));
+        dragon.setRiderSprinting(sprinting);
+        if (ascending != lastAscending || descending != lastDescending || freeCam != lastFreeCam
+                || sprinting != lastSprinting || toggleMode) {
+            ModNetwork.CHANNEL.sendToServer(new RiderInputPacket(ascending, descending, freeCam, sprinting, toggleMode));
+            lastSprinting = sprinting;
             lastAscending = ascending;
             lastDescending = descending;
             lastFreeCam = freeCam;

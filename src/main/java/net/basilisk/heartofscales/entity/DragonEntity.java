@@ -98,6 +98,10 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private static final EntityDataAccessor<Boolean> DATA_SADDLED =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
     private static final String TAG_SADDLE = "Saddle";
+    private static final EntityDataAccessor<Float> DATA_STAMINA =
+            SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.FLOAT);
+    private static final EntityDataAccessor<Boolean> DATA_EXHAUSTED =
+            SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Byte> DATA_FLIGHT_MODE =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BYTE);
     private static final String TAG_FLIGHT_MODE = "FlightMode";
@@ -144,10 +148,22 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     /** Stalled in free cam, the assist tips the body itself into a dive, since the look no longer steers it. */
     private static final float FREE_CAM_STALL_ASSIST_PITCH = 30.0f;
     private static final float FREE_CAM_STALL_ASSIST_RATE = 4.0f;
+    /** Free flight levels its pitch at this rate once free cam is on, degrees per tick. */
+    private static final float FREE_CAM_LEVEL_RATE = 4.0f;
     /** After free cam is switched off in free flight the body swings to the look at this rate instead of snapping. */
     private static final float FREE_CAM_RELEASE_TURN_RATE = 8.0f;
     /** How far the head may turn from the body to follow the rider's look in free cam, degrees. */
     private static final float FREE_CAM_HEAD_YAW_LIMIT = 70.0f;
+    // Sprint: the rider holds vanilla's Sprint key to fly faster at a stamina cost. Stamina is counted in ticks of
+    // sprinting, lives on the server and is synced, and refills whenever the dragon is not sprinting.
+    private static final float STAMINA_MAX = 200.0f;
+    private static final float STAMINA_REGEN = 0.5f;
+    private static final int STAMINA_REGEN_DELAY_TICKS = 20;
+    /** Run dry and sprinting is locked until this much has come back, so an empty bar cannot stutter-sprint. */
+    private static final float STAMINA_RECOVERED_FRACTION = 0.25f;
+    private static final double SPRINT_SPEED_FACTOR = 2;
+    /** Glide sprint is powered wingbeats: speed added per tick, but never past cruise x SPRINT_SPEED_FACTOR. */
+    private static final double GLIDE_SPRINT_ACCEL = 0.02;
     /** How quickly the glide side-slip reaches full strafe speed per tick (1 = instant). */
     private static final double GLIDE_STRAFE_RESPONSIVENESS = 0.2;
     // Below stall speed the wings stop carrying the dragon and it falls faster each tick until it has speed again.
@@ -197,6 +213,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private boolean riderAscending;
     private boolean riderDescending;
     private boolean riderFreeCam;
+    private boolean riderSprinting;
+    private int staminaRestTicks;
     private boolean wasFreeCam;
     private boolean freeCamCatchingUp;
     private float bankTurnRate;
@@ -234,6 +252,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         entityData.define(DATA_FLYING, false);
         entityData.define(DATA_SADDLED, false);
         entityData.define(DATA_FLIGHT_MODE, (byte) FlightMode.FREE.ordinal());
+        entityData.define(DATA_STAMINA, STAMINA_MAX);
+        entityData.define(DATA_EXHAUSTED, false);
     }
 
     public FlightMode getFlightMode() {
@@ -264,6 +284,46 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
 
     public void setRiderFreeCam(boolean freeCam) {
         this.riderFreeCam = freeCam;
+    }
+
+    public void setRiderSprinting(boolean sprinting) {
+        this.riderSprinting = sprinting;
+    }
+
+    /** Stamina left, 0 to 1. */
+    public float getStaminaFraction() {
+        return entityData.get(DATA_STAMINA) / STAMINA_MAX;
+    }
+
+    public boolean isExhausted() {
+        return entityData.get(DATA_EXHAUSTED);
+    }
+
+    /**
+     * Whether the sprint is actually happening this tick: key held, stamina to spend, and in free flight some
+     * movement to boost, so hovering with the key held costs nothing. The same answer on the server, which spends
+     * the stamina, and on the rider's client, which applies the speed.
+     */
+    public boolean isSprinting() {
+        if (!riderSprinting || !isFlying() || isExhausted() || entityData.get(DATA_STAMINA) <= 0.0f) return false;
+        if (!(getControllingPassenger() instanceof Player rider)) return false;
+        if (getFlightMode() == FlightMode.GLIDE) return true;
+        return rider.xxa != 0.0f || rider.zza != 0.0f || riderAscending || riderDescending;
+    }
+
+    private void tickStamina() {
+        float stamina = entityData.get(DATA_STAMINA);
+        if (isSprinting()) {
+            stamina = Math.max(0.0f, stamina - 1.0f);
+            staminaRestTicks = 0;
+            if (stamina <= 0.0f) entityData.set(DATA_EXHAUSTED, true);
+        } else if (staminaRestTicks < STAMINA_REGEN_DELAY_TICKS) {
+            staminaRestTicks++;
+        } else {
+            stamina = Math.min(STAMINA_MAX, stamina + STAMINA_REGEN);
+        }
+        if (isExhausted() && stamina >= STAMINA_MAX * STAMINA_RECOVERED_FRACTION) entityData.set(DATA_EXHAUSTED, false);
+        entityData.set(DATA_STAMINA, stamina);
     }
 
     /** True on the rider's client while a glide is below stall speed; glide speed is only simulated there. */
@@ -541,6 +601,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             tickRoll();
             return;
         }
+        tickStamina();
         if (home == null || tickCount % HOME_CHECK_INTERVAL != 0) return;
         if (isWalkingHome()) DragonHomecoming.track(this);
         if (isHomeInThisDimension() && level().isLoaded(home.pos())) {
@@ -580,8 +641,9 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             }
             freeCamCatchingUp = false;
         } else if (freeCam) {
-            // Free flight holds its heading; WASD moves along it
-            setRot(getYRot(), getXRot());
+            // Free flight keeps its yaw and levels out, so WASD moves flat along the heading and Ascend and
+            // Descend handle height. Holding whatever pitch the look happened to have would leave it stuck nose up or down.
+            setRot(getYRot(), Mth.approach(getXRot(), 0.0f, FREE_CAM_LEVEL_RATE));
         } else if (isFlying() && freeCamCatchingUp) {
             setRot(Mth.approachDegrees(getYRot(), rider.getYRot(), FREE_CAM_RELEASE_TURN_RATE),
                     Mth.approachDegrees(getXRot(), rider.getXRot(), FREE_CAM_RELEASE_TURN_RATE));
@@ -648,7 +710,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         glideFallSpeed = 0;
         glideStallTicks = 0;
         glideStrafe = 0;
-        double speed = getAttributeValue(Attributes.FLYING_SPEED) * RIDDEN_FLIGHT_SPEED_FACTOR;
+        double speed = getAttributeValue(Attributes.FLYING_SPEED) * RIDDEN_FLIGHT_SPEED_FACTOR
+                * (isSprinting() ? SPRINT_SPEED_FACTOR : 1.0);
         double yaw = Math.toRadians(getYRot());
         Vec3 left = new Vec3(Math.cos(yaw), 0, Math.sin(yaw));
         Vec3 forward = riderFreeCam ? Vec3.directionFromRotation(getXRot(), getYRot()) : rider.getLookAngle();
@@ -666,8 +729,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
 
     /**
      * Glide mode: speed is a scalar carried along the dragon's own heading, and only the pitch changes it.
-     * Inside the neutral band it holds, nose above the band loses speed, nose below gains. Nothing else adds speed:
-     * a glide runs on momentum and dives, and pulling the nose up is the only brake. A and D side-slip without
+     * Inside the neutral band it holds, nose above the band loses speed, nose below gains. Apart from sprinting,
+     * nothing else adds speed: a glide runs on momentum and dives, and pulling the nose up is the only brake. A and D side-slip without
      * turning, so the dragon can be shifted around an obstacle while holding its course. Below stall speed the
      * dragon falls until a dive gives speed back.
      */
@@ -683,6 +746,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         double pitchEffect = Math.sin(Math.toRadians(pastBand));
         glideSpeed += pitchEffect > 0 ? pitchEffect * GLIDE_DIVE_ACCEL
                 : pitchEffect * GLIDE_CLIMB_DECEL * Math.max(1.0, glideSpeed / cruise);
+        double sprintCeiling = cruise * SPRINT_SPEED_FACTOR;
+        if (isSprinting() && glideSpeed < sprintCeiling) glideSpeed = Math.min(sprintCeiling, glideSpeed + GLIDE_SPRINT_ACCEL);
         if (glideSpeed < stallSpeed && pastBand > 0) {
             double caught = glideFallSpeed * GLIDE_STALL_FALL_TO_SPEED;
             glideSpeed += caught;
@@ -794,6 +859,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         riderAscending = false;
         riderDescending = false;
         riderFreeCam = false;
+        riderSprinting = false;
         wasFreeCam = false;
         freeCamCatchingUp = false;
         riddenFlightTicks = 0;
