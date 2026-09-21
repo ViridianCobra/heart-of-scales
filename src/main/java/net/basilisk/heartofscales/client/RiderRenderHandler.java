@@ -18,7 +18,7 @@ public final class RiderRenderHandler {
         if (!(event.getEntity().getVehicle() instanceof DragonEntity dragon) || !dragon.isFlying()) return;
         float partialTick = event.getPartialTick();
         float yaw = Mth.rotLerp(partialTick, dragon.yRotO, dragon.getYRot());
-        float pitch = Mth.lerp(partialTick, dragon.xRotO, dragon.getXRot());
+        float pitch = Mth.lerp(partialTick, dragon.xRotO, dragon.getXRot()) + dragon.getTiltPitch(partialTick);
         float roll = dragon.getRoll(partialTick);
 
         PoseStack poseStack = event.getPoseStack();

@@ -33,7 +33,7 @@ public class DragonRenderer extends GeoEntityRenderer<DragonEntity> {
     protected void applyRotations(DragonEntity dragon, PoseStack poseStack, float ageInTicks, float rotationYaw, float partialTick) {
         super.applyRotations(dragon, poseStack, ageInTicks, rotationYaw, partialTick);
         if (!dragon.isFlying()) return;
-        float pitch = Mth.lerp(partialTick, dragon.xRotO, dragon.getXRot());
+        float pitch = Mth.lerp(partialTick, dragon.xRotO, dragon.getXRot()) + dragon.getTiltPitch(partialTick);
         float pivot = PITCH_PIVOT_HEIGHT * (dragon.isBaby() ? BABY_SCALE : 1.0f);
         poseStack.translate(0, pivot, 0);
         // GeckoLib's model space is flipped relative to vanilla's, so the phantom's sign is inverted here

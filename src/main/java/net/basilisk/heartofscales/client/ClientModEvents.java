@@ -19,6 +19,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.api.distmarker.Dist;
 import net.basilisk.heartofscales.client.hud.DragonScaleOverlay;
+import net.basilisk.heartofscales.client.hud.FlightSpeedOverlay;
 import net.minecraftforge.client.event.RegisterColorHandlersEvent;
 import net.minecraftforge.client.event.RegisterGuiOverlaysEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -62,6 +63,7 @@ public final class ClientModEvents {
     @SubscribeEvent
     public static void registerOverlays(RegisterGuiOverlaysEvent event) {
         event.registerAboveAll(DragonScaleOverlay.ID, new DragonScaleOverlay());
+        event.registerAboveAll(FlightSpeedOverlay.ID, new FlightSpeedOverlay());
     }
 
     private ClientModEvents() {}
