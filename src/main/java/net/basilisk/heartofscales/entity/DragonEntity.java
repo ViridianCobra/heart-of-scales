@@ -121,20 +121,55 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private static final float GLIDE_YAW_RATE = 4.0f;
     private static final float GLIDE_PITCH_RATE = 3.0f;
     private static final double GLIDE_MAX_SPEED_FACTOR = 3.5;
-    private static final double GLIDE_MIN_SPEED_FACTOR = 0.25;
     private static final double GLIDE_STALL_SPEED_FACTOR = 0.5;
-    /** Speed gained per tick in a straight-down dive (scaled by sin of the pitch); climbing costs the same. */
-    private static final double GLIDE_DIVE_ACCEL = 0.05;
-    /** Fraction of the gap to cruise speed closed per tick, so gained speed bleeds off and lost speed recovers. */
-    private static final double GLIDE_DRAG = 0.01;
-    private static final double GLIDE_FLAP_ACCEL = 0.01;
-    private static final double GLIDE_BRAKE = 0.02;
-    private static final double GLIDE_ASCEND_LIFT = 0.3;
-    private static final double GLIDE_STALL_SINK = 0.08;
-    // Visual roll while gliding, derived from the yaw rate; no sync needed since yaw is already synced
+    /**
+     * Pitch band, in degrees below the horizon, where speed holds steady. Nose above it loses speed, nose below
+     * it gains, so level flight slowly runs out of momentum.
+     */
+    private static final float GLIDE_NEUTRAL_PITCH_MIN = 4.0f;
+    private static final float GLIDE_NEUTRAL_PITCH_MAX = 6.0f;
+    /** Speed gained per tick in a vertical dive (scaled by sin of the angle past the band). */
+    private static final double GLIDE_DIVE_ACCEL = 0.06;
+    /**
+     * Speed lost per tick in a vertical climb at cruise speed (scaled by sin of the angle past the band). Above
+     * cruise the loss grows with speed, so a fast sweep upward sheds its extra speed quickly, then eases off.
+     */
+    private static final double GLIDE_CLIMB_DECEL = 0.042;
+    // Free cam: while it is switched on the body ignores the rider's look and keeps its own heading, so the mouse
+    // is left to the camera. Gliding, W and S pitch that heading and A and D bank into a turn; the turn rate ramps
+    // so the visual roll, which comes from the yaw rate, leans in and out like a plane.
+    private static final float FREE_CAM_KEY_PITCH_RATE = 2.5f;
+    private static final float FREE_CAM_BANK_TURN_RATE = 3.0f;
+    private static final float FREE_CAM_BANK_SMOOTHING = 0.15f;
+    /** Stalled in free cam, the assist tips the body itself into a dive, since the look no longer steers it. */
+    private static final float FREE_CAM_STALL_ASSIST_PITCH = 30.0f;
+    private static final float FREE_CAM_STALL_ASSIST_RATE = 4.0f;
+    /** After free cam is switched off in free flight the body swings to the look at this rate instead of snapping. */
+    private static final float FREE_CAM_RELEASE_TURN_RATE = 8.0f;
+    /** How far the head may turn from the body to follow the rider's look in free cam, degrees. */
+    private static final float FREE_CAM_HEAD_YAW_LIMIT = 70.0f;
+    /** How quickly the glide side-slip reaches full strafe speed per tick (1 = instant). */
+    private static final double GLIDE_STRAFE_RESPONSIVENESS = 0.2;
+    // Below stall speed the wings stop carrying the dragon and it falls faster each tick until it has speed again.
+    // The ramp is gentle so there is a moment of hang at the top of a climb to get the nose down.
+    private static final double GLIDE_STALL_FALL_ACCEL = 0.015;
+    private static final double GLIDE_STALL_FALL_MAX = 0.6;
+    private static final double GLIDE_STALL_FALL_RECOVERY = 0.8;
+    /** Stalled, the nose answers the look this fast, so a dive can be set up in under a second. */
+    private static final float GLIDE_STALL_PITCH_RATE = 9.0f;
+    /** Share of the fall turned into glide speed each tick once the nose is below the band: the dive catching. */
+    private static final double GLIDE_STALL_FALL_TO_SPEED = 0.25;
+    /** Stalled this long, RiderInputHandler starts easing the rider's look down into a dive. */
+    private static final int GLIDE_STALL_ASSIST_DELAY_TICKS = 10;
+    /** Marks glideSpeed as not yet seeded; the first glide tick takes the speed the dragon already has. */
+    private static final double GLIDE_SPEED_UNSET = -1.0;
+    // Visual roll, client side. Glide banks from the yaw rate; free flight also leans into a strafe and lifts
+    // the nose when backing up. Both come from yaw and position changes, which are already synced.
     private static final float ROLL_PER_YAW_DEGREE = 8.0f;
     private static final float MAX_ROLL = 50.0f;
     private static final float ROLL_SMOOTHING = 0.15f;
+    private static final float FREE_STRAFE_ROLL = 25.0f;
+    private static final float FREE_REVERSE_PITCH = 20.0f;
     // Wandering dragons stay in a 33 x 33 box centred on their home beacon, from 3 below it to 17 above
     private static final int HOME_RANGE_HORIZONTAL = 16;
     private static final int HOME_RANGE_DOWN = 3;
@@ -160,11 +195,21 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private final SimpleContainer inventory = new SimpleContainer(INVENTORY_SIZE);
     // Transient rider input, held on the server and on the rider's client
     private boolean riderAscending;
+    private boolean riderDescending;
+    private boolean riderFreeCam;
+    private boolean wasFreeCam;
+    private boolean freeCamCatchingUp;
+    private float bankTurnRate;
     private int riddenFlightTicks;
-    private double glideSpeed;
+    private double glideSpeed = GLIDE_SPEED_UNSET;
+    private double glideFallSpeed;
+    private int glideStallTicks;
+    private double glideStrafe;
     // Client-side render state
     private float roll;
     private float rollO;
+    private float tiltPitch;
+    private float tiltPitchO;
     private float lastYaw;
 
     public DragonEntity(EntityType<? extends DragonEntity> type, Level level) {
@@ -209,6 +254,28 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         this.riderAscending = ascending;
     }
 
+    public void setRiderDescending(boolean descending) {
+        this.riderDescending = descending;
+    }
+
+    public boolean isRiderFreeCam() {
+        return riderFreeCam;
+    }
+
+    public void setRiderFreeCam(boolean freeCam) {
+        this.riderFreeCam = freeCam;
+    }
+
+    /** True on the rider's client while a glide is below stall speed; glide speed is only simulated there. */
+    public boolean isGlideStalling() {
+        return isFlying() && getFlightMode() == FlightMode.GLIDE && glideSpeed >= 0
+                && glideSpeed < getAttributeValue(Attributes.FLYING_SPEED) * RIDDEN_FLIGHT_SPEED_FACTOR * GLIDE_STALL_SPEED_FACTOR;
+    }
+
+    public boolean isStallAssistActive() {
+        return isGlideStalling() && glideStallTicks > GLIDE_STALL_ASSIST_DELAY_TICKS;
+    }
+
     public SimpleContainer getInventory() {
         return inventory;
     }
@@ -245,6 +312,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     public void setFlying(boolean flying) {
         if (flying == isFlying()) return;
         entityData.set(DATA_FLYING, flying);
+        // Every landing, ridden or not, puts the dragon back in free flight for the next take-off
+        if (!flying) entityData.set(DATA_FLIGHT_MODE, (byte) FlightMode.FREE.ordinal());
         navigation.stop();
         moveControl = flying ? airMoveControl : groundMoveControl;
         navigation = flying ? airNavigation : groundNavigation;
@@ -493,25 +562,67 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     @Override
     protected void tickRidden(Player rider, Vec3 input) {
         super.tickRidden(rider, input);
+        boolean freeCam = riderFreeCam && isFlying();
+        if (freeCam && !wasFreeCam) bankTurnRate = 0.0f;
+        if (!freeCam && wasFreeCam) freeCamCatchingUp = true;
+        wasFreeCam = freeCam;
+
         if (isFlying() && getFlightMode() == FlightMode.GLIDE) {
-            // Momentum: the heading lags behind the look
-            setRot(Mth.approachDegrees(getYRot(), rider.getYRot(), GLIDE_YAW_RATE),
-                    Mth.approachDegrees(getXRot(), rider.getXRot(), GLIDE_PITCH_RATE));
+            // Glide speed lives on the rider's client, so only that side ever sees a stall
+            boolean stalling = isGlideStalling();
+            glideStallTicks = stalling ? glideStallTicks + 1 : 0;
+            if (freeCam) {
+                tickFreeCamGlide(rider);
+            } else {
+                // Momentum: the heading lags behind the look
+                setRot(Mth.approachDegrees(getYRot(), rider.getYRot(), GLIDE_YAW_RATE),
+                        Mth.approachDegrees(getXRot(), rider.getXRot(), stalling ? GLIDE_STALL_PITCH_RATE : GLIDE_PITCH_RATE));
+            }
+            freeCamCatchingUp = false;
+        } else if (freeCam) {
+            // Free flight holds its heading; WASD moves along it
+            setRot(getYRot(), getXRot());
+        } else if (isFlying() && freeCamCatchingUp) {
+            setRot(Mth.approachDegrees(getYRot(), rider.getYRot(), FREE_CAM_RELEASE_TURN_RATE),
+                    Mth.approachDegrees(getXRot(), rider.getXRot(), FREE_CAM_RELEASE_TURN_RATE));
+            freeCamCatchingUp = Math.abs(Mth.degreesDifference(getYRot(), rider.getYRot())) > 1.0f
+                    || Math.abs(getXRot() - rider.getXRot()) > 1.0f;
         } else {
+            freeCamCatchingUp = false;
             setRot(rider.getYRot(), isFlying() ? rider.getXRot() : rider.getXRot() * 0.5f);
         }
         yRotO = yBodyRot = yHeadRot = getYRot();
+        if (freeCam) {
+            yHeadRot += Mth.clamp(Mth.wrapDegrees(rider.getYRot() - getYRot()), -FREE_CAM_HEAD_YAW_LIMIT, FREE_CAM_HEAD_YAW_LIMIT);
+        }
 
         if (!isFlying()) {
             if (riderAscending && onGround() && canFly()) {
                 setFlying(true);
                 riddenFlightTicks = 0;
-                glideSpeed = getAttributeValue(Attributes.FLYING_SPEED);
             }
             return;
         }
         riddenFlightTicks++;
         if (onGround() && !riderAscending && riddenFlightTicks > LANDING_GRACE_TICKS) setFlying(false);
+    }
+
+    /** Free cam glide: the keys steer the body's own heading. A is left, which is a falling yaw; W is nose down. */
+    private void tickFreeCamGlide(Player rider) {
+        float wantedTurn = -Math.signum(rider.xxa) * FREE_CAM_BANK_TURN_RATE;
+        bankTurnRate += (wantedTurn - bankTurnRate) * FREE_CAM_BANK_SMOOTHING;
+        float pitch = getXRot() + Math.signum(rider.zza) * FREE_CAM_KEY_PITCH_RATE;
+        if (isStallAssistActive() && pitch < FREE_CAM_STALL_ASSIST_PITCH) {
+            pitch = Math.min(FREE_CAM_STALL_ASSIST_PITCH, pitch + FREE_CAM_STALL_ASSIST_RATE);
+        }
+        setRot(getYRot() + bankTurnRate, Mth.clamp(pitch, -90.0f, 90.0f));
+    }
+
+    /** Vanilla's body control swings a still mob's body round to face its head, which would undo free cam's head turn. */
+    @Override
+    protected float tickHeadTurn(float yRot, float animStep) {
+        if (isFlying() && getControllingPassenger() != null) return animStep;
+        return super.tickHeadTurn(yRot, animStep);
     }
 
     @Override
@@ -525,7 +636,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
 
     /**
      * Free mode: the dragon goes where the rider looks. Forward input follows the look vector, pitch included,
-     * strafe slides sideways, ascend adds straight up. Vanilla's air friction is skipped because it slows
+     * strafe slides sideways, ascend and descend add straight up and down. Vanilla's air friction is skipped because it slows
      * horizontal motion five times more than vertical.
      */
     private void travelFlyingRidden(Player rider, Vec3 input) {
@@ -533,11 +644,17 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             travelGliding(input);
             return;
         }
+        glideSpeed = GLIDE_SPEED_UNSET;
+        glideFallSpeed = 0;
+        glideStallTicks = 0;
+        glideStrafe = 0;
         double speed = getAttributeValue(Attributes.FLYING_SPEED) * RIDDEN_FLIGHT_SPEED_FACTOR;
         double yaw = Math.toRadians(getYRot());
         Vec3 left = new Vec3(Math.cos(yaw), 0, Math.sin(yaw));
-        Vec3 wanted = rider.getLookAngle().scale(input.z).add(left.scale(input.x));
+        Vec3 forward = riderFreeCam ? Vec3.directionFromRotation(getXRot(), getYRot()) : rider.getLookAngle();
+        Vec3 wanted = forward.scale(input.z).add(left.scale(input.x));
         if (riderAscending) wanted = wanted.add(0, RIDDEN_ASCEND_INPUT, 0);
+        if (riderDescending) wanted = wanted.add(0, -RIDDEN_ASCEND_INPUT, 0);
         if (wanted.lengthSqr() > 1.0) wanted = wanted.normalize();
         wanted = wanted.scale(speed);
 
@@ -548,28 +665,49 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     }
 
     /**
-     * Glide mode: speed is a scalar carried along the dragon's own heading. Diving adds to it, climbing takes
-     * from it, drag pulls it back toward cruise. W flaps for a little extra, S brakes, ascend lifts at a cost.
-     * Below stall speed the dragon sinks.
+     * Glide mode: speed is a scalar carried along the dragon's own heading, and only the pitch changes it.
+     * Inside the neutral band it holds, nose above the band loses speed, nose below gains. Nothing else adds speed:
+     * a glide runs on momentum and dives, and pulling the nose up is the only brake. A and D side-slip without
+     * turning, so the dragon can be shifted around an obstacle while holding its course. Below stall speed the
+     * dragon falls until a dive gives speed back.
      */
     private void travelGliding(Vec3 input) {
         double cruise = getAttributeValue(Attributes.FLYING_SPEED) * RIDDEN_FLIGHT_SPEED_FACTOR;
-        // Entered glide mid-flight: carry whatever speed the dragon already had
-        if (glideSpeed <= 0) glideSpeed = Math.max(getDeltaMovement().length(), cruise * GLIDE_STALL_SPEED_FACTOR);
-        double pitchSin = Math.sin(Math.toRadians(getXRot()));
-        glideSpeed += pitchSin * GLIDE_DIVE_ACCEL;
-        glideSpeed += (cruise - glideSpeed) * GLIDE_DRAG;
-        if (input.z > 0) glideSpeed += GLIDE_FLAP_ACCEL;
-        if (input.z < 0) glideSpeed -= GLIDE_BRAKE;
-        if (riderAscending) glideSpeed -= GLIDE_FLAP_ACCEL;
-        glideSpeed = Mth.clamp(glideSpeed, cruise * GLIDE_MIN_SPEED_FACTOR, cruise * GLIDE_MAX_SPEED_FACTOR);
+        double stallSpeed = cruise * GLIDE_STALL_SPEED_FACTOR;
+        if (glideSpeed < 0) glideSpeed = Math.max(getDeltaMovement().length(), stallSpeed);
 
-        Vec3 velocity = Vec3.directionFromRotation(getXRot(), getYRot()).scale(glideSpeed);
-        if (riderAscending) velocity = velocity.add(0, GLIDE_ASCEND_LIFT * cruise, 0);
-        if (glideSpeed < cruise * GLIDE_STALL_SPEED_FACTOR) velocity = velocity.add(0, -GLIDE_STALL_SINK, 0);
+        // XRot is positive nose-down, so the band sits at +4..+6
+        float pitch = getXRot();
+        float pastBand = pitch > GLIDE_NEUTRAL_PITCH_MAX ? pitch - GLIDE_NEUTRAL_PITCH_MAX
+                : pitch < GLIDE_NEUTRAL_PITCH_MIN ? pitch - GLIDE_NEUTRAL_PITCH_MIN : 0.0f;
+        double pitchEffect = Math.sin(Math.toRadians(pastBand));
+        glideSpeed += pitchEffect > 0 ? pitchEffect * GLIDE_DIVE_ACCEL
+                : pitchEffect * GLIDE_CLIMB_DECEL * Math.max(1.0, glideSpeed / cruise);
+        if (glideSpeed < stallSpeed && pastBand > 0) {
+            double caught = glideFallSpeed * GLIDE_STALL_FALL_TO_SPEED;
+            glideSpeed += caught;
+            glideFallSpeed -= caught;
+        }
+        glideSpeed = Mth.clamp(glideSpeed, 0.0, cruise * GLIDE_MAX_SPEED_FACTOR);
 
+        if (glideSpeed < stallSpeed) glideFallSpeed = Math.min(GLIDE_STALL_FALL_MAX, glideFallSpeed + GLIDE_STALL_FALL_ACCEL);
+        else glideFallSpeed *= GLIDE_STALL_FALL_RECOVERY;
+
+        glideStrafe += (input.x * cruise - glideStrafe) * GLIDE_STRAFE_RESPONSIVENESS;
+        double yaw = Math.toRadians(getYRot());
+        Vec3 left = new Vec3(Math.cos(yaw), 0, Math.sin(yaw));
+        Vec3 velocity = Vec3.directionFromRotation(getXRot(), getYRot()).scale(glideSpeed)
+                .add(left.scale(glideStrafe)).add(0, -glideFallSpeed, 0);
+
+        Vec3 before = position();
         setDeltaMovement(velocity);
         move(MoverType.SELF, velocity);
+        // Hitting something: keep only the speed the move really achieved, so a head-on hit stalls the dragon
+        if (horizontalCollision || verticalCollision) {
+            Vec3 moved = position().subtract(before);
+            glideSpeed = Math.min(glideSpeed, moved.length());
+            setDeltaMovement(moved);
+        }
         calculateEntityAnimation(true);
     }
 
@@ -578,13 +716,35 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         return Mth.lerp(partialTick, rollO, roll);
     }
 
+    /** Extra render pitch on top of XRot, interpolated. Negative lifts the nose. */
+    public float getTiltPitch(float partialTick) {
+        return Mth.lerp(partialTick, tiltPitchO, tiltPitch);
+    }
+
     private void tickRoll() {
         rollO = roll;
+        tiltPitchO = tiltPitch;
         float yawDelta = Mth.degreesDifference(lastYaw, getYRot());
         lastYaw = getYRot();
-        float target = isFlying() && getFlightMode() == FlightMode.GLIDE
-                ? Mth.clamp(yawDelta * ROLL_PER_YAW_DEGREE, -MAX_ROLL, MAX_ROLL) : 0.0f;
-        roll += (target - roll) * ROLL_SMOOTHING;
+        float targetRoll = 0.0f;
+        float targetPitch = 0.0f;
+        if (isFlying() && getControllingPassenger() != null) {
+            targetRoll = yawDelta * ROLL_PER_YAW_DEGREE;
+            // Sideways and backward speed relative to the heading, as a share of full strafe / reverse speed
+            double cruise = getAttributeValue(Attributes.FLYING_SPEED) * RIDDEN_FLIGHT_SPEED_FACTOR;
+            double yaw = Math.toRadians(getYRot());
+            double dx = getX() - xo;
+            double dz = getZ() - zo;
+            double rightward = dx * -Math.cos(yaw) + dz * -Math.sin(yaw);
+            targetRoll += FREE_STRAFE_ROLL * (float) Mth.clamp(rightward / (cruise * RIDDEN_STRAFE_FACTOR), -1.0, 1.0);
+            if (getFlightMode() == FlightMode.FREE) {
+                double backward = -(dx * -Math.sin(yaw) + dz * Math.cos(yaw));
+                targetPitch = -FREE_REVERSE_PITCH * (float) Mth.clamp(backward / (cruise * RIDDEN_REVERSE_FACTOR), 0.0, 1.0);
+            }
+            targetRoll = Mth.clamp(targetRoll, -MAX_ROLL, MAX_ROLL);
+        }
+        roll += (targetRoll - roll) * ROLL_SMOOTHING;
+        tiltPitch += (targetPitch - tiltPitch) * ROLL_SMOOTHING;
     }
 
     @Override
@@ -615,8 +775,9 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         }
         double scale = isBaby() ? 0.5 : 1.0;
         double pivot = BODY_PIVOT_HEIGHT * scale;
-        double seat = SADDLE_HEIGHT * scale - pivot;
-        double pitch = Math.toRadians(getXRot());
+        // The rider's own offset swings with the body too; added straight down it pulls them off the back in a steep dive
+        double seat = SADDLE_HEIGHT * scale + passenger.getMyRidingOffset() - pivot;
+        double pitch = Math.toRadians(getXRot() + tiltPitch);
         double rollRad = Math.toRadians(roll);
         double yaw = Math.toRadians(getYRot());
         Vec3 forward = new Vec3(-Math.sin(yaw), 0, Math.cos(yaw));
@@ -624,15 +785,22 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         Vec3 offset = new Vec3(0, pivot + seat * Math.cos(pitch) * Math.cos(rollRad), 0)
                 .add(forward.scale(seat * Math.sin(pitch)))
                 .add(right.scale(seat * Math.sin(rollRad)));
-        callback.accept(passenger, getX() + offset.x, getY() + offset.y + passenger.getMyRidingOffset(), getZ() + offset.z);
+        callback.accept(passenger, getX() + offset.x, getY() + offset.y, getZ() + offset.z);
     }
 
     @Override
     protected void removePassenger(Entity passenger) {
         super.removePassenger(passenger);
         riderAscending = false;
+        riderDescending = false;
+        riderFreeCam = false;
+        wasFreeCam = false;
+        freeCamCatchingUp = false;
         riddenFlightTicks = 0;
-        glideSpeed = 0;
+        glideSpeed = GLIDE_SPEED_UNSET;
+        glideFallSpeed = 0;
+        glideStallTicks = 0;
+        glideStrafe = 0;
     }
 
     @Override

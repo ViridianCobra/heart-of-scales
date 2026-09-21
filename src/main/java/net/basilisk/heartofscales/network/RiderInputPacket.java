@@ -8,17 +8,19 @@ import net.minecraftforge.network.NetworkEvent;
 import java.util.function.Supplier;
 
 /**
- * Rider -> server. Vanilla already syncs the rider's look and WASD; this carries the two inputs it does not:
- * whether the ascend key is held, and a request to toggle the flight mode.
+ * Rider -> server. Vanilla already syncs the rider's look and WASD; this carries the inputs it does not:
+ * whether the ascend, descend and free cam keys are held, and a request to toggle the flight mode.
  */
-public record RiderInputPacket(boolean ascending, boolean toggleMode) {
+public record RiderInputPacket(boolean ascending, boolean descending, boolean freeCam, boolean toggleMode) {
     public static void encode(RiderInputPacket packet, FriendlyByteBuf buf) {
         buf.writeBoolean(packet.ascending);
+        buf.writeBoolean(packet.descending);
+        buf.writeBoolean(packet.freeCam);
         buf.writeBoolean(packet.toggleMode);
     }
 
     public static RiderInputPacket decode(FriendlyByteBuf buf) {
-        return new RiderInputPacket(buf.readBoolean(), buf.readBoolean());
+        return new RiderInputPacket(buf.readBoolean(), buf.readBoolean(), buf.readBoolean(), buf.readBoolean());
     }
 
     public static void handle(RiderInputPacket packet, Supplier<NetworkEvent.Context> context) {
@@ -28,6 +30,8 @@ public record RiderInputPacket(boolean ascending, boolean toggleMode) {
             // Only the player actually driving the dragon may steer it
             if (!(sender.getVehicle() instanceof DragonEntity dragon) || dragon.getControllingPassenger() != sender) return;
             dragon.setRiderAscending(packet.ascending);
+            dragon.setRiderDescending(packet.descending);
+            dragon.setRiderFreeCam(packet.freeCam);
             if (packet.toggleMode) dragon.toggleFlightMode(sender);
         });
         context.get().setPacketHandled(true);

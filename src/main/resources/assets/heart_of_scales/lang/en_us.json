@@ -13,6 +13,7 @@
   "item.heart_of_scales.dracip-petals": "Dracip Petals",
   "item.heart_of_scales.dragon-scale": "Dragon Scale",
   "hud.heart_of_scales.egg": "%s Egg",
+  "hud.heart_of_scales.speed": "%s m/s",
   "block.heart_of_scales.amorberry-bush": "Amorberry Bush",
   "item.heart_of_scales.amorberry": "Amorberry",
   "item.heart_of_scales.dragon-codex": "Dragon Codex",
@@ -48,7 +49,11 @@
   "container.heart_of_scales.dragon": "Dragon",
   "key.categories.heart_of_scales": "Heart of Scales",
   "key.heart_of_scales.ascend": "Dragon Ascend",
+  "key.heart_of_scales.descend": "Dragon Descend",
   "key.heart_of_scales.flight-mode": "Toggle Flight Mode",
+  "key.heart_of_scales.free-cam": "Toggle Dragon Free Cam",
+  "free_cam.heart_of_scales.on": "Free cam: On",
+  "free_cam.heart_of_scales.off": "Free cam: Off",
   "flight_mode.heart_of_scales.free": "Flight mode: Free",
   "flight_mode.heart_of_scales.glide": "Flight mode: Glide"
 }
