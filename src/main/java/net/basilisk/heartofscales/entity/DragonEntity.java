@@ -170,9 +170,9 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private static final float FREE_CAM_HEAD_YAW_LIMIT = 70.0f;
     // Sprint: the rider holds vanilla's Sprint key to fly faster at a stamina cost. Stamina is counted in ticks of
     // sprinting, lives on the server and is synced, and refills whenever the dragon is not sprinting.
-    private static final float STAMINA_MAX = 200.0f;
+    private static final float STAMINA_MAX = 100.0f;
     /** How long a full bar lasts while sprinting. */
-    private static final float STAMINA_DRAIN_SECONDS = 8.0f;
+    private static final float STAMINA_DRAIN_SECONDS = 5.0f;
     /** Unit of sprint used every tick. */
     private static final float STAMINA_DRAIN = STAMINA_MAX / (STAMINA_DRAIN_SECONDS * 20.0f);
     private static final float STAMINA_REGEN = 0.5f;
