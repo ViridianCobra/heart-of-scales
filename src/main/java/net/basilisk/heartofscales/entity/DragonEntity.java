@@ -214,9 +214,9 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private static final int HOME_RANGE_DOWN = 3;
     private static final int HOME_RANGE_UP = 17;
     private static final int HOME_CHECK_INTERVAL = 20;
-    private static final int TAME_THRESHOLD = 100;
-    private static final int FOOD_TAME_STEP = 15;
-    private static final int FAVOURITE_FOOD_TAME_STEP = 40;
+    private static final int TAME_THRESHOLD = 300;
+    private static final int FOOD_TAME_STEP = 10;
+    private static final int FAVOURITE_FOOD_TAME_STEP = 30;
     private static final RawAnimation SIT = RawAnimation.begin().thenLoop("misc.sit");
     private static final RawAnimation FLY = RawAnimation.begin().thenLoop("misc.fly");
 
