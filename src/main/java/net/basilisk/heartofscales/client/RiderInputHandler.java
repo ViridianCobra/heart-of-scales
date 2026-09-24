@@ -66,7 +66,7 @@ public final class RiderInputHandler {
         boolean descending = ModKeyMappings.DESCEND.isDown();
         boolean freeCamClicked = false;
         while (ModKeyMappings.FREE_CAM.consumeClick()) freeCamClicked = !freeCamClicked;
-        if (!dragon.isFlying()) {
+        if (!dragon.isInFluidMode()) {
             freeCamOn = false;
         } else if (freeCamClicked) {
             freeCamOn = !freeCamOn;

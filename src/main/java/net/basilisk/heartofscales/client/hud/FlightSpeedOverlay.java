@@ -29,7 +29,7 @@ public final class FlightSpeedOverlay implements IGuiOverlay {
     public void render(ForgeGui gui, GuiGraphics graphics, float partialTick, int screenWidth, int screenHeight) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.options.hideGui) return;
-        if (!(mc.player.getVehicle() instanceof DragonEntity dragon) || !dragon.isFlying()) return;
+        if (!(mc.player.getVehicle() instanceof DragonEntity dragon) || !dragon.isInFluidMode()) return;
         if (dragon.getControllingPassenger() != mc.player) return;
 
         // Distance covered in the last tick, so it reads the same in free flight and glide

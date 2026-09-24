@@ -10,12 +10,12 @@ import net.minecraftforge.client.event.RenderPlayerEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-/** Tilts a rider's model with the flying dragon's pitch and roll, rotating in the dragon's own frame. */
+/** Tilts a rider's model with the flying or swimming dragon's pitch and roll, rotating in the dragon's own frame. */
 @Mod.EventBusSubscriber(modid = HeartOfScales.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
 public final class RiderRenderHandler {
     @SubscribeEvent
     public static void onRenderPlayer(RenderPlayerEvent.Pre event) {
-        if (!(event.getEntity().getVehicle() instanceof DragonEntity dragon) || !dragon.isFlying()) return;
+        if (!(event.getEntity().getVehicle() instanceof DragonEntity dragon) || !dragon.isInFluidMode()) return;
         float partialTick = event.getPartialTick();
         float yaw = Mth.rotLerp(partialTick, dragon.yRotO, dragon.getYRot());
         float pitch = Mth.lerp(partialTick, dragon.xRotO, dragon.getXRot()) + dragon.getTiltPitch(partialTick);
