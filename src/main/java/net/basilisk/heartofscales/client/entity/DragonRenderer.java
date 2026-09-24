@@ -28,11 +28,11 @@ public class DragonRenderer extends GeoEntityRenderer<DragonEntity> {
         super.scaleModelForRender(widthScale * scale, heightScale * scale, poseStack, dragon, model, isReRender, partialTick, packedLight, packedOverlay);
     }
 
-    /** Pitch the whole body toward the flight direction, turning about the body centre rather than the feet. */
+    /** Pitch the whole body toward the flight or swim direction, turning about the body centre rather than the feet. */
     @Override
     protected void applyRotations(DragonEntity dragon, PoseStack poseStack, float ageInTicks, float rotationYaw, float partialTick) {
         super.applyRotations(dragon, poseStack, ageInTicks, rotationYaw, partialTick);
-        if (!dragon.isFlying()) return;
+        if (!dragon.isFlying() && !dragon.isInSwimMode()) return;
         float pitch = Mth.lerp(partialTick, dragon.xRotO, dragon.getXRot()) + dragon.getTiltPitch(partialTick);
         float pivot = PITCH_PIVOT_HEIGHT * (dragon.isBaby() ? BABY_SCALE : 1.0f);
         poseStack.translate(0, pivot, 0);

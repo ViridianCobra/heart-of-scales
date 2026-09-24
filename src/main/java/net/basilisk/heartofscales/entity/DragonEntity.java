@@ -4,7 +4,11 @@ import net.basilisk.heartofscales.block.DragonBeaconBlock;
 import net.basilisk.heartofscales.entity.ai.DragonFlightMoveControl;
 import net.basilisk.heartofscales.entity.ai.DragonLookControl;
 import net.basilisk.heartofscales.entity.ai.DragonRoamFlightGoal;
+import net.basilisk.heartofscales.entity.ai.DragonRoamSwimGoal;
+import net.basilisk.heartofscales.entity.ai.DragonSwimMoveControl;
 import net.basilisk.heartofscales.entity.ai.FleeCarelessPlayerGoal;
+import net.basilisk.heartofscales.entity.ai.ReturnToWaterGoal;
+import net.basilisk.heartofscales.entity.ai.TemptWithFoodGoal;
 import net.basilisk.heartofscales.genome.DragonGenome;
 import net.basilisk.heartofscales.genome.Inheritance;
 import net.basilisk.heartofscales.item.DragonStaffItem;
@@ -66,6 +70,7 @@ import net.minecraft.world.entity.ai.goal.SitWhenOrderedToGoal;
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
 import net.minecraft.world.entity.ai.navigation.FlyingPathNavigation;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
+import net.minecraft.world.entity.ai.navigation.WaterBoundPathNavigation;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -95,6 +100,9 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private static final EntityDataAccessor<Boolean> DATA_FLYING =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
     private static final String TAG_FLYING = "Flying";
+    private static final EntityDataAccessor<Boolean> DATA_SWIM_MODE =
+            SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final String TAG_SWIM_MODE = "SwimMode";
     private static final EntityDataAccessor<Boolean> DATA_SADDLED =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
     private static final String TAG_SADDLE = "Saddle";
@@ -120,6 +128,12 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private static final double FREE_MODE_RESPONSIVENESS = 0.3;
     /** Ticks after take-off before touching the ground counts as landing. */
     private static final int LANDING_GRACE_TICKS = 10;
+    // Vanilla's in-water travel ignores the mob's speed, so swimming pushes itself like a dolphin.
+    // Cruise settles at SWIM_ACCEL * SWIM_DRAG / (1 - SWIM_DRAG) blocks per tick: about 0.54, just under flight cruise.
+    private static final double SWIM_ACCEL = 0.06;
+    private static final double SWIM_DRAG = 0.9;
+    /** Ridden swimming chases the wanted velocity at half the rate of free flight, for a heavier feel in water. */
+    private static final double RIDDEN_SWIM_RESPONSIVENESS = 0.15;
     // Glide mode: the heading chases the rider's look at a limited rate and speed is carried as momentum.
     // Speeds are in blocks per tick relative to FLYING_SPEED (cruise = 1.0 x attribute).
     private static final float GLIDE_YAW_RATE = 4.0f;
@@ -157,11 +171,15 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     // Sprint: the rider holds vanilla's Sprint key to fly faster at a stamina cost. Stamina is counted in ticks of
     // sprinting, lives on the server and is synced, and refills whenever the dragon is not sprinting.
     private static final float STAMINA_MAX = 200.0f;
+    /** How long a full bar lasts while sprinting. */
+    private static final float STAMINA_DRAIN_SECONDS = 8.0f;
+    /** Unit of sprint used every tick. */
+    private static final float STAMINA_DRAIN = STAMINA_MAX / (STAMINA_DRAIN_SECONDS * 20.0f);
     private static final float STAMINA_REGEN = 0.5f;
     private static final int STAMINA_REGEN_DELAY_TICKS = 20;
     /** Run dry and sprinting is locked until this much has come back, so an empty bar cannot stutter-sprint. */
     private static final float STAMINA_RECOVERED_FRACTION = 0.25f;
-    private static final double SPRINT_SPEED_FACTOR = 2;
+    private static final double SPRINT_SPEED_FACTOR = 3;
     /** Glide sprint is powered wingbeats: speed added per tick, but never past cruise x SPRINT_SPEED_FACTOR. */
     private static final double GLIDE_SPRINT_ACCEL = 0.02;
     /** How quickly the glide side-slip reaches full strafe speed per tick (1 = instant). */
@@ -208,6 +226,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private final PathNavigation groundNavigation;
     private final MoveControl airMoveControl;
     private final PathNavigation airNavigation;
+    private final MoveControl swimMoveControl;
+    private final PathNavigation swimNavigation;
     private final SimpleContainer inventory = new SimpleContainer(INVENTORY_SIZE);
     // Transient rider input, held on the server and on the rider's client
     private boolean riderAscending;
@@ -217,6 +237,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private int staminaRestTicks;
     private boolean wasFreeCam;
     private boolean freeCamCatchingUp;
+    private boolean swimNavigationConfigured;
     private float bankTurnRate;
     private int riddenFlightTicks;
     private double glideSpeed = GLIDE_SPEED_UNSET;
@@ -241,6 +262,10 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         flying.setCanFloat(true);
         flying.setCanPassDoors(true);
         airNavigation = flying;
+        swimMoveControl = new DragonSwimMoveControl(this);
+        WaterBoundPathNavigation swimming = new WaterBoundPathNavigation(this, level);
+        swimming.setCanFloat(false);
+        swimNavigation = swimming;
         inventory.addListener(container -> onInventoryChanged());
     }
 
@@ -250,6 +275,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         entityData.define(DATA_SUBSPECIES, DragonGenome.DEFAULT_SUBSPECIES);
         entityData.define(DATA_COMMAND, (byte) DragonCommand.FOLLOW.ordinal());
         entityData.define(DATA_FLYING, false);
+        entityData.define(DATA_SWIM_MODE, false);
         entityData.define(DATA_SADDLED, false);
         entityData.define(DATA_FLIGHT_MODE, (byte) FlightMode.FREE.ordinal());
         entityData.define(DATA_STAMINA, STAMINA_MAX);
@@ -261,6 +287,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     }
 
     public void toggleFlightMode(Player rider) {
+        if (isInSwimMode()) return;
         FlightMode mode = getFlightMode().next();
         entityData.set(DATA_FLIGHT_MODE, (byte) mode.ordinal());
         rider.displayClientMessage(Component.translatable("flight_mode.heart_of_scales." + mode.id()), true);
@@ -305,7 +332,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
      * the stamina, and on the rider's client, which applies the speed.
      */
     public boolean isSprinting() {
-        if (!riderSprinting || !isFlying() || isExhausted() || entityData.get(DATA_STAMINA) <= 0.0f) return false;
+        if (!riderSprinting || !isInFluidMode() || isExhausted() || entityData.get(DATA_STAMINA) <= 0.0f) return false;
         if (!(getControllingPassenger() instanceof Player rider)) return false;
         if (getFlightMode() == FlightMode.GLIDE) return true;
         return rider.xxa != 0.0f || rider.zza != 0.0f || riderAscending || riderDescending;
@@ -314,7 +341,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private void tickStamina() {
         float stamina = entityData.get(DATA_STAMINA);
         if (isSprinting()) {
-            stamina = Math.max(0.0f, stamina - 1.0f);
+            stamina = Math.max(0.0f, stamina - STAMINA_DRAIN);
             staminaRestTicks = 0;
             if (stamina <= 0.0f) entityData.set(DATA_EXHAUSTED, true);
         } else if (staminaRestTicks < STAMINA_REGEN_DELAY_TICKS) {
@@ -364,6 +391,11 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         return ModRegistries.species(level().registryAccess(), getSubspecies()).map(DragonSpecies::flies).orElse(false);
     }
 
+    /** Whether this dragon's species swims. Water-bound species crawl on land and roam in water. */
+    public boolean canSwim() {
+        return ModRegistries.species(level().registryAccess(), getSubspecies()).map(DragonSpecies::swims).orElse(false);
+    }
+
     public boolean isFlying() {
         return entityData.get(DATA_FLYING);
     }
@@ -371,6 +403,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     /** The only place gravity, move control and navigation are switched. Server side. */
     public void setFlying(boolean flying) {
         if (flying == isFlying()) return;
+        if (flying && isInSwimMode()) return;
         entityData.set(DATA_FLYING, flying);
         // Every landing, ridden or not, puts the dragon back in free flight for the next take-off
         if (!flying) entityData.set(DATA_FLIGHT_MODE, (byte) FlightMode.FREE.ordinal());
@@ -378,6 +411,36 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         moveControl = flying ? airMoveControl : groundMoveControl;
         navigation = flying ? airNavigation : groundNavigation;
         setNoGravity(flying);
+    }
+
+    public boolean isInSwimMode() {
+        return entityData.get(DATA_SWIM_MODE);
+    }
+
+    /** Flying or swimming: the modes a rider steers by look rather than by vanilla ground movement. */
+    public boolean isInFluidMode() {
+        return isFlying() || isInSwimMode();
+    }
+
+    /** The speed AI swimming settles at under its push and drag; ridden swimming cruises at the same. */
+    public double swimCruiseSpeed() {
+        return SWIM_ACCEL * SWIM_DRAG / (1 - SWIM_DRAG);
+    }
+
+    /** The only place the swim move control, navigation and gravity are switched. Server side. */
+    public void setSwimMode(boolean swim) {
+        if (swim == isInSwimMode()) return;
+        if (swim && isFlying()) return;
+        entityData.set(DATA_SWIM_MODE, swim);
+        navigation.stop();
+        moveControl = swim ? swimMoveControl : groundMoveControl;
+        navigation = swim ? swimNavigation : groundNavigation;
+        setNoGravity(swim);
+    }
+
+    /** The land navigator, whichever mode is active. Used by goals that walk the dragon somewhere. */
+    public PathNavigation getGroundNavigation() {
+        return groundNavigation;
     }
 
     public DragonGenome getGenome() {
@@ -413,6 +476,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         tag.putInt(TAG_TAME_PROGRESS, tameProgress);
         tag.putString(TAG_COMMAND, getCommand().id());
         tag.putBoolean(TAG_FLYING, isFlying());
+        tag.putBoolean(TAG_SWIM_MODE, isInSwimMode());
         tag.putString(TAG_FLIGHT_MODE, getFlightMode().id());
         ItemStack saddle = inventory.getItem(SADDLE_SLOT);
         if (!saddle.isEmpty()) tag.put(TAG_SADDLE, saddle.save(new CompoundTag()));
@@ -431,6 +495,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         tameProgress = tag.getInt(TAG_TAME_PROGRESS);
         home = readHome(tag);
         setFlying(tag.getBoolean(TAG_FLYING));
+        setSwimMode(tag.getBoolean(TAG_SWIM_MODE));
         entityData.set(DATA_FLIGHT_MODE, (byte) FlightMode.byId(tag.getString(TAG_FLIGHT_MODE)).ordinal());
         inventory.setItem(SADDLE_SLOT, tag.contains(TAG_SADDLE, Tag.TAG_COMPOUND)
                 ? ItemStack.of(tag.getCompound(TAG_SADDLE)) : ItemStack.EMPTY);
@@ -466,11 +531,19 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
 
     @Override
     protected void registerGoals() {
-        goalSelector.addGoal(0, new FloatGoal(this));
+        // Vanilla's float goal bobs any mob to the surface, which would fight a dive
+        goalSelector.addGoal(0, new FloatGoal(this) {
+            @Override
+            public boolean canUse() {
+                return !canSwim() && super.canUse();
+            }
+        });
         goalSelector.addGoal(1, new SitWhenOrderedToGoal(this));
         goalSelector.addGoal(2, new FleeCarelessPlayerGoal(this, 8.0f, 1.2, 1.6));
+        goalSelector.addGoal(3, new TemptWithFoodGoal(this));
         goalSelector.addGoal(3, new BreedGoal(this, 1.0));
         goalSelector.addGoal(4, new DragonRoamFlightGoal(this));
+        goalSelector.addGoal(4, new DragonRoamSwimGoal(this));
         goalSelector.addGoal(5, new MoveTowardsRestrictionGoal(this, 1.0));
         goalSelector.addGoal(6, new FollowOwnerGoal(this, 1.0, 10.0f, 2.0f, false) {
             @Override
@@ -483,9 +556,10 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
                 return getCommand() == DragonCommand.FOLLOW && super.canContinueToUse();
             }
         });
-        goalSelector.addGoal(7, new WaterAvoidingRandomStrollGoal(this, 1.0));
-        goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0f));
-        goalSelector.addGoal(9, new RandomLookAroundGoal(this));
+        goalSelector.addGoal(7, new ReturnToWaterGoal(this));
+        goalSelector.addGoal(8, new WaterAvoidingRandomStrollGoal(this, 1.0));
+        goalSelector.addGoal(9, new LookAtPlayerGoal(this, Player.class, 8.0f));
+        goalSelector.addGoal(10, new RandomLookAroundGoal(this));
     }
 
     public DragonCommand getCommand() {
@@ -602,6 +676,13 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             return;
         }
         tickStamina();
+        WaterBoundCrawl.tick(this);
+        if (isInSwimMode()) RiddenSwimming.topUpPassengerAir(this);
+        if (!swimNavigationConfigured && canSwim()) {
+            // Species is not known in the constructor; once it is, let land paths enter water instead of stopping at the bank
+            groundNavigation.setCanFloat(true);
+            swimNavigationConfigured = true;
+        }
         if (home == null || tickCount % HOME_CHECK_INTERVAL != 0) return;
         if (isWalkingHome()) DragonHomecoming.track(this);
         if (isHomeInThisDimension() && level().isLoaded(home.pos())) {
@@ -623,7 +704,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     @Override
     protected void tickRidden(Player rider, Vec3 input) {
         super.tickRidden(rider, input);
-        boolean freeCam = riderFreeCam && isFlying();
+        boolean freeCam = riderFreeCam && isInFluidMode();
         if (freeCam && !wasFreeCam) bankTurnRate = 0.0f;
         if (!freeCam && wasFreeCam) freeCamCatchingUp = true;
         wasFreeCam = freeCam;
@@ -644,20 +725,22 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             // Free flight keeps its yaw and levels out, so WASD moves flat along the heading and Ascend and
             // Descend handle height. Holding whatever pitch the look happened to have would leave it stuck nose up or down.
             setRot(getYRot(), Mth.approach(getXRot(), 0.0f, FREE_CAM_LEVEL_RATE));
-        } else if (isFlying() && freeCamCatchingUp) {
+        } else if (isInFluidMode() && freeCamCatchingUp) {
             setRot(Mth.approachDegrees(getYRot(), rider.getYRot(), FREE_CAM_RELEASE_TURN_RATE),
                     Mth.approachDegrees(getXRot(), rider.getXRot(), FREE_CAM_RELEASE_TURN_RATE));
             freeCamCatchingUp = Math.abs(Mth.degreesDifference(getYRot(), rider.getYRot())) > 1.0f
                     || Math.abs(getXRot() - rider.getXRot()) > 1.0f;
         } else {
             freeCamCatchingUp = false;
-            setRot(rider.getYRot(), isFlying() ? rider.getXRot() : rider.getXRot() * 0.5f);
+            setRot(rider.getYRot(), isInFluidMode() ? rider.getXRot() : rider.getXRot() * 0.5f);
         }
         yRotO = yBodyRot = yHeadRot = getYRot();
         if (freeCam) {
             yHeadRot += Mth.clamp(Mth.wrapDegrees(rider.getYRot() - getYRot()), -FREE_CAM_HEAD_YAW_LIMIT, FREE_CAM_HEAD_YAW_LIMIT);
         }
 
+        RiddenSwimming.tickMode(this);
+        if (isInSwimMode()) return;
         if (!isFlying()) {
             if (riderAscending && onGround() && canFly()) {
                 setFlying(true);
@@ -683,7 +766,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     /** Vanilla's body control swings a still mob's body round to face its head, which would undo free cam's head turn. */
     @Override
     protected float tickHeadTurn(float yRot, float animStep) {
-        if (isFlying() && getControllingPassenger() != null) return animStep;
+        if (isInFluidMode() && getControllingPassenger() != null) return animStep;
         return super.tickHeadTurn(yRot, animStep);
     }
 
@@ -693,7 +776,26 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             travelFlyingRidden(rider, input);
             return;
         }
+        if (isInSwimMode() && getControllingPassenger() instanceof Player rider && isControlledByLocalInstance()) {
+            travelFreeSteered(rider, input, swimCruiseSpeed() * (isSprinting() ? SPRINT_SPEED_FACTOR : 1.0),
+                    RIDDEN_SWIM_RESPONSIVENESS, true);
+            return;
+        }
+        if (isInSwimMode() && isEffectiveAi() && !isVehicle()) {
+            travelSwimming(input);
+            return;
+        }
         super.travel(input);
+    }
+
+    /** The move control's input gives the direction; a fixed push and drag give the speed. */
+    private void travelSwimming(Vec3 input) {
+        if (input.lengthSqr() > 1.0e-7) {
+            setDeltaMovement(getDeltaMovement().add(input.normalize().scale(SWIM_ACCEL).yRot((float) -Math.toRadians(getYRot()))));
+        }
+        move(MoverType.SELF, getDeltaMovement());
+        setDeltaMovement(getDeltaMovement().scale(SWIM_DRAG));
+        calculateEntityAnimation(false);
     }
 
     /**
@@ -712,6 +814,15 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         glideStrafe = 0;
         double speed = getAttributeValue(Attributes.FLYING_SPEED) * RIDDEN_FLIGHT_SPEED_FACTOR
                 * (isSprinting() ? SPRINT_SPEED_FACTOR : 1.0);
+        travelFreeSteered(rider, input, speed, FREE_MODE_RESPONSIVENESS, false);
+    }
+
+    /**
+     * Shared by free flight and ridden swimming: the dragon goes where the rider looks. Forward input follows the look
+     * vector, pitch included, strafe slides sideways, ascend and descend add straight up and down, and velocity chases
+     * the result at the given responsiveness.
+     */
+    private void travelFreeSteered(Player rider, Vec3 input, double speed, double responsiveness, boolean capAtSurface) {
         double yaw = Math.toRadians(getYRot());
         Vec3 left = new Vec3(Math.cos(yaw), 0, Math.sin(yaw));
         Vec3 forward = riderFreeCam ? Vec3.directionFromRotation(getXRot(), getYRot()) : rider.getLookAngle();
@@ -720,8 +831,9 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         if (riderDescending) wanted = wanted.add(0, -RIDDEN_ASCEND_INPUT, 0);
         if (wanted.lengthSqr() > 1.0) wanted = wanted.normalize();
         wanted = wanted.scale(speed);
+        if (capAtSurface) wanted = RiddenSwimming.capAtSurface(this, wanted);
 
-        Vec3 velocity = getDeltaMovement().lerp(wanted, FREE_MODE_RESPONSIVENESS);
+        Vec3 velocity = getDeltaMovement().lerp(wanted, responsiveness);
         setDeltaMovement(velocity);
         move(MoverType.SELF, velocity);
         calculateEntityAnimation(true);
@@ -793,16 +905,16 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         lastYaw = getYRot();
         float targetRoll = 0.0f;
         float targetPitch = 0.0f;
-        if (isFlying() && getControllingPassenger() != null) {
+        if (isInFluidMode() && getControllingPassenger() != null) {
             targetRoll = yawDelta * ROLL_PER_YAW_DEGREE;
             // Sideways and backward speed relative to the heading, as a share of full strafe / reverse speed
-            double cruise = getAttributeValue(Attributes.FLYING_SPEED) * RIDDEN_FLIGHT_SPEED_FACTOR;
+            double cruise = isInSwimMode() ? swimCruiseSpeed() : getAttributeValue(Attributes.FLYING_SPEED) * RIDDEN_FLIGHT_SPEED_FACTOR;
             double yaw = Math.toRadians(getYRot());
             double dx = getX() - xo;
             double dz = getZ() - zo;
             double rightward = dx * -Math.cos(yaw) + dz * -Math.sin(yaw);
             targetRoll += FREE_STRAFE_ROLL * (float) Mth.clamp(rightward / (cruise * RIDDEN_STRAFE_FACTOR), -1.0, 1.0);
-            if (getFlightMode() == FlightMode.FREE) {
+            if (isInSwimMode() || getFlightMode() == FlightMode.FREE) {
                 double backward = -(dx * -Math.sin(yaw) + dz * Math.cos(yaw));
                 targetPitch = -FREE_REVERSE_PITCH * (float) Mth.clamp(backward / (cruise * RIDDEN_REVERSE_FACTOR), 0.0, 1.0);
             }
@@ -834,7 +946,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     @Override
     protected void positionRider(Entity passenger, MoveFunction callback) {
         if (!hasPassenger(passenger)) return;
-        if (!isFlying()) {
+        if (!isInFluidMode()) {
             super.positionRider(passenger, callback);
             return;
         }
@@ -880,6 +992,17 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     @Override
     public boolean causeFallDamage(float distance, float multiplier, DamageSource source) {
         return false;
+    }
+
+    @Override
+    public boolean canBreatheUnderwater() {
+        return canSwim();
+    }
+
+    /** A swimming dragon holds its curve against river currents. */
+    @Override
+    public boolean isPushedByFluid() {
+        return !isInSwimMode();
     }
 
     @Override
@@ -963,7 +1086,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         controllers.add(new AnimationController<>(this, "Movement", 5, state -> {
-            if (isFlying()) return state.setAndContinue(FLY);
+            // Fly is the placeholder until a misc.swim animation exists
+            if (isFlying() || isInSwimMode()) return state.setAndContinue(FLY);
             if (isInSittingPose()) return state.setAndContinue(SIT);
             return state.setAndContinue(state.isMoving() ? DefaultAnimations.WALK : DefaultAnimations.IDLE);
         }));
