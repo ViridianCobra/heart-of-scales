@@ -179,9 +179,14 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private static final int STAMINA_REGEN_DELAY_TICKS = 20;
     /** Run dry and sprinting is locked until this much has come back, so an empty bar cannot stutter-sprint. */
     private static final float STAMINA_RECOVERED_FRACTION = 0.25f;
+    /** Free flight and swimming: sprint multiplies the speed while moving. */
     private static final double SPRINT_SPEED_FACTOR = 3;
-    /** Glide sprint is powered wingbeats: speed added per tick, but never past cruise x SPRINT_SPEED_FACTOR. */
-    private static final double GLIDE_SPRINT_ACCEL = 0.02;
+    /** Glide: sprinting raises the top speed by this many blocks per second above the normal dive cap. */
+    private static final double GLIDE_SPRINT_EXTRA_SPEED = 10.0 / 20.0;
+    /** Glide sprint is powered wingbeats: speed added per tick, up to the raised cap. */
+    private static final double GLIDE_SPRINT_ACCEL = 0.025;
+    /** Speed shed per tick when sprint is released above the normal cap, so the drop is eased rather than instant. */
+    private static final double GLIDE_SPRINT_EXCESS_BLEED = 0.05;
     /** How quickly the glide side-slip reaches full strafe speed per tick (1 = instant). */
     private static final double GLIDE_STRAFE_RESPONSIVENESS = 0.2;
     // Below stall speed the wings stop carrying the dragon and it falls faster each tick until it has speed again.
@@ -856,16 +861,27 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         float pastBand = pitch > GLIDE_NEUTRAL_PITCH_MAX ? pitch - GLIDE_NEUTRAL_PITCH_MAX
                 : pitch < GLIDE_NEUTRAL_PITCH_MIN ? pitch - GLIDE_NEUTRAL_PITCH_MIN : 0.0f;
         double pitchEffect = Math.sin(Math.toRadians(pastBand));
-        glideSpeed += pitchEffect > 0 ? pitchEffect * GLIDE_DIVE_ACCEL
-                : pitchEffect * GLIDE_CLIMB_DECEL * Math.max(1.0, glideSpeed / cruise);
-        double sprintCeiling = cruise * SPRINT_SPEED_FACTOR;
-        if (isSprinting() && glideSpeed < sprintCeiling) glideSpeed = Math.min(sprintCeiling, glideSpeed + GLIDE_SPRINT_ACCEL);
+        boolean sprinting = isSprinting();
+        if (pitchEffect > 0) {
+            glideSpeed += pitchEffect * GLIDE_DIVE_ACCEL;
+        } else if (!sprinting) {
+            // Powered wingbeats hold speed through a climb; only an unpowered glide bleeds it
+            glideSpeed += pitchEffect * GLIDE_CLIMB_DECEL * Math.max(1.0, glideSpeed / cruise);
+        }
+        double maxSpeed = cruise * GLIDE_MAX_SPEED_FACTOR;
+        double sprintMaxSpeed = maxSpeed + GLIDE_SPRINT_EXTRA_SPEED;
+        if (sprinting) {
+            // Nose above the band: wingbeats only hold what you have. In the band or diving they add.
+            if (pitchEffect >= 0) glideSpeed = Math.min(sprintMaxSpeed, glideSpeed + GLIDE_SPRINT_ACCEL);
+        } else if (glideSpeed > maxSpeed) {
+            glideSpeed = Math.max(maxSpeed, glideSpeed - GLIDE_SPRINT_EXCESS_BLEED);
+        }
         if (glideSpeed < stallSpeed && pastBand > 0) {
             double caught = glideFallSpeed * GLIDE_STALL_FALL_TO_SPEED;
             glideSpeed += caught;
             glideFallSpeed -= caught;
         }
-        glideSpeed = Mth.clamp(glideSpeed, 0.0, cruise * GLIDE_MAX_SPEED_FACTOR);
+        glideSpeed = Mth.clamp(glideSpeed, 0.0, sprintMaxSpeed);
 
         if (glideSpeed < stallSpeed) glideFallSpeed = Math.min(GLIDE_STALL_FALL_MAX, glideFallSpeed + GLIDE_STALL_FALL_ACCEL);
         else glideFallSpeed *= GLIDE_STALL_FALL_RECOVERY;
