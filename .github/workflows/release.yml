@@ -126,3 +126,40 @@ jobs:
         run: |
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file release-notes.md
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber outputs/jar-1.20.1/*.jar outputs/jar-1.21.1/*.jar
+
+  # Only after both jars are on the release: mark the version released in each
+  # branch's CHANGELOG.md and move mod_version on to the next patch version.
+  bump:
+    name: Bump ${{ matrix.branch }} to the next version
+    needs: publish
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - branch: master
+            minecraft: 1.20.1
+          - branch: 1.21.1
+            minecraft: 1.21.1
+    steps:
+      - name: Checkout ${{ matrix.branch }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}
+
+      - name: Mark released and start the next version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${TAG#v}"
+          IFS=. read -r major minor patch <<< "$version"
+          next="$major.$minor.$((patch + 1))"
+
+          # "## 0.0.1 (Unreleased)" becomes "## 0.0.1", with "## 0.0.2 (Unreleased)" added above it
+          sed -i -E "s/^## ${version//./\\.}( \(Unreleased\))?\$/## $next (Unreleased)\n\n## $version/" CHANGELOG.md
+          sed -i -E "s/^mod_version=.*\$/mod_version=$next+${{ matrix.minecraft }}/" gradle.properties
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md gradle.properties
+          git commit -m "Release $version, start $next"
+          git push origin HEAD:${{ matrix.branch }}
