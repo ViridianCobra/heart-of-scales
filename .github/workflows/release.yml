@@ -1,0 +1,128 @@
+name: Release
+
+# Publish a GitHub Release whose tag is the feature version (for example 0.0.1).
+# This builds that version on both branches, fills the release notes from each
+# branch's CHANGELOG.md, and attaches both jars.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.minecraft }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - branch: master
+            minecraft: 1.20.1
+            loader: Forge
+            java: 17
+          - branch: 1.21.1
+            minecraft: 1.21.1
+            loader: NeoForge
+            java: 21
+    steps:
+      - name: Checkout ${{ matrix.branch }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}
+
+      - name: Setup JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: temurin
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Check mod_version matches the release tag
+        id: version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${TAG#v}"
+          expected="${version}+${{ matrix.minecraft }}"
+          actual=$(grep -E '^mod_version=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::Branch ${{ matrix.branch }} has mod_version=$actual but the release tag asks for $expected"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "mod_version=$actual" >> "$GITHUB_OUTPUT"
+
+      - name: Extract changelog section
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Lines under "## <version>" up to the next "## " heading. "(Unreleased)" after the version is tolerated.
+          awk -v v="$VERSION" '
+            /^## / { if (found) exit; found = ($2 == v); next }
+            found { print }
+          ' CHANGELOG.md | sed -e '/./,$!d' > changelog-section.md
+          if [ ! -s changelog-section.md ]; then
+            echo "::error::CHANGELOG.md on ${{ matrix.branch }} has no section for version $VERSION"
+            exit 1
+          fi
+          {
+            echo "## Minecraft ${{ matrix.minecraft }} (${{ matrix.loader }})"
+            echo
+            cat changelog-section.md
+            echo
+          } > notes-${{ matrix.minecraft }}.md
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Build
+        run: ./gradlew build
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: jar-${{ matrix.minecraft }}
+          path: build/libs/heart_of_scales-${{ steps.version.outputs.mod_version }}.jar
+          if-no-files-found: error
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: notes-${{ matrix.minecraft }}
+          path: notes-${{ matrix.minecraft }}.md
+          if-no-files-found: error
+
+  publish:
+    name: Attach jars and notes
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build outputs
+        uses: actions/download-artifact@v4
+        with:
+          path: outputs
+
+      - name: Assemble release notes
+        env:
+          EXISTING_BODY: ${{ github.event.release.body }}
+        run: |
+          {
+            if [ -n "$EXISTING_BODY" ]; then
+              printf '%s\n\n' "$EXISTING_BODY"
+            fi
+            cat outputs/notes-1.20.1/notes-1.20.1.md
+            cat outputs/notes-1.21.1/notes-1.21.1.md
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file release-notes.md
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber outputs/jar-1.20.1/*.jar outputs/jar-1.21.1/*.jar
