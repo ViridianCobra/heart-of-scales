@@ -1,3 +1,8 @@
 {
-  "egg_tint": "#2F6F9F"
+  "species": "water",
+  "swims": true,
+  "egg_tint": "#2F6F9F",
+  "foods": "heart_of_scales:dragon-food/water",
+  "favourite_food": "minecraft:cooked_cod",
+  "hatch_condition": "waterlogged"
 }

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "heart_of_scales:block/mutation-mushroom"
+  }
+}

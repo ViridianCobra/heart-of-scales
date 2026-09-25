@@ -1,3 +1,8 @@
 {
-  "egg_tint": "#9AA5B1"
+  "species": "air",
+  "flies": true,
+  "egg_tint": "#9AA5B1",
+  "foods": "heart_of_scales:dragon-food/air",
+  "favourite_food": "minecraft:cooked_chicken",
+  "hatch_condition": "open_air"
 }

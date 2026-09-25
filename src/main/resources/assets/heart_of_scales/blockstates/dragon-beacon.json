@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "half=lower": {
+      "model": "heart_of_scales:block/dragon-beacon"
+    },
+    "half=upper": {
+      "model": "heart_of_scales:block/dragon-beacon-upper"
+    }
+  }
+}

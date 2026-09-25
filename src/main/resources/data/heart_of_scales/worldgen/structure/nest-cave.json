@@ -1,0 +1,12 @@
+{
+  "type": "heart_of_scales:nest",
+  "biomes": "#heart_of_scales:has-structure/nest-cave",
+  "step": "top_layer_modification",
+  "terrain_adaptation": "beard_box",
+  "spawn_overrides": {},
+  "start_pool": "heart_of_scales:nest/cave",
+  "min_y": -50,
+  "max_y": 40,
+  "headroom": 6,
+  "avoid_fluids": true
+}

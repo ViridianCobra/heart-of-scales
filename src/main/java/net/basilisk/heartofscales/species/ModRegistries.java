@@ -22,14 +22,23 @@ public final class ModRegistries {
     }
 
     public static Optional<DragonSpecies> species(RegistryAccess registries, DragonGenome genome) {
-        ResourceLocation id = ResourceLocation.tryParse(genome.subspecies());
+        return species(registries, genome.subspecies());
+    }
+
+    public static Optional<DragonSpecies> species(RegistryAccess registries, String subspecies) {
+        ResourceLocation id = ResourceLocation.tryParse(subspecies);
         if (id == null) return Optional.empty();
         return registries.registry(DRAGON_SPECIES).map(registry -> registry.get(id));
     }
 
     /** Egg tint for this genome's subspecies, or white if no datapack defines it. */
     public static int eggTint(RegistryAccess registries, DragonGenome genome) {
-        return species(registries, genome).map(DragonSpecies::eggTint).orElse(NO_TINT);
+        return tint(registries, genome.subspecies());
+    }
+
+    /** Tint for a subspecies id, or white if no datapack defines it. */
+    public static int tint(RegistryAccess registries, String subspecies) {
+        return species(registries, subspecies).map(DragonSpecies::eggTint).orElse(NO_TINT);
     }
 
     private ModRegistries() {}

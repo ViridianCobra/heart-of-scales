@@ -1,0 +1,10 @@
+{
+  "type": "heart_of_scales:nest",
+  "biomes": "#heart_of_scales:has-structure/nest-forest",
+  "step": "top_layer_modification",
+  "terrain_adaptation": "beard_thin",
+  "spawn_overrides": {},
+  "start_pool": "heart_of_scales:nest/forest",
+  "project_start_to_heightmap": "WORLD_SURFACE_WG",
+  "foundation_layers": 1
+}

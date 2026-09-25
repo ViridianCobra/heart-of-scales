@@ -1,0 +1,15 @@
+{
+  "name": "heart_of_scales:nest/forest",
+  "fallback": "minecraft:empty",
+  "elements": [
+    {
+      "weight": 1,
+      "element": {
+        "element_type": "minecraft:single_pool_element",
+        "location": "heart_of_scales:nest/forest/oak",
+        "processors": "minecraft:empty",
+        "projection": "rigid"
+      }
+    }
+  ]
+}

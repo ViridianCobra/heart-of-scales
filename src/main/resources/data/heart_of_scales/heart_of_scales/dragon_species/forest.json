@@ -1,3 +1,7 @@
 {
-  "egg_tint": "#4E8F3A"
+  "species": "land",
+  "egg_tint": "#4E8F3A",
+  "foods": "heart_of_scales:dragon-food/land",
+  "favourite_food": "minecraft:cooked_beef",
+  "hatch_condition": "dim"
 }
