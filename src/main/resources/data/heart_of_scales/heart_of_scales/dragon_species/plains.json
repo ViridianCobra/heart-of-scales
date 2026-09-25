@@ -4,5 +4,13 @@
   "egg_tint": "#9BA98E",
   "foods": "heart_of_scales:dragon-food/air",
   "favourite_food": "minecraft:cooked_rabbit",
-  "hatch_condition": "open_air"
+  "hatch_condition": "open_air",
+  "stats": {
+    "flight": {
+      "ridden_speed_factor": 1.5
+    },
+    "glide": {
+      "max_speed_factor": 4
+    }
+  }
 }

@@ -4,5 +4,10 @@
   "egg_tint": "#5FB7C9",
   "foods": "heart_of_scales:dragon-food/water",
   "favourite_food": "minecraft:cooked_salmon",
-  "hatch_condition": "waterlogged"
+  "hatch_condition": "waterlogged",
+  "stats": {
+    "swim": {
+      "ridden_responsiveness": 0.2
+    }
+  }
 }
