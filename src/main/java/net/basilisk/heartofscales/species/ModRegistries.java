@@ -7,11 +7,18 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.registries.DataPackRegistryEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.Collections;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class ModRegistries {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ModRegistries.class);
     private static final int NO_TINT = 0xFFFFFF;
+    private static final Set<String> WARNED_UNKNOWN = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     public static final ResourceKey<Registry<DragonSpecies>> DRAGON_SPECIES =
             ResourceKey.createRegistryKey(ResourceLocation.fromNamespaceAndPath(HeartOfScales.MOD_ID, "dragon_species"));
@@ -29,6 +36,15 @@ public final class ModRegistries {
         ResourceLocation id = ResourceLocation.tryParse(subspecies);
         if (id == null) return Optional.empty();
         return registries.registry(DRAGON_SPECIES).map(registry -> registry.get(id));
+    }
+
+    /** The subspecies, or {@link DragonSpecies#DEFAULT} if no datapack defines it. Warns once per unknown id. */
+    public static DragonSpecies speciesOrDefault(RegistryAccess registries, String subspecies) {
+        Optional<DragonSpecies> found = species(registries, subspecies);
+        if (found.isEmpty() && WARNED_UNKNOWN.add(subspecies)) {
+            LOGGER.warn("Unknown dragon subspecies '{}'; using default stats", subspecies);
+        }
+        return found.orElse(DragonSpecies.DEFAULT);
     }
 
     /** Egg tint for this genome's subspecies, or white if no datapack defines it. */

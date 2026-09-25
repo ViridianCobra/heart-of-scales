@@ -2,6 +2,7 @@ package net.basilisk.heartofscales.entity.ai;
 
 import net.basilisk.heartofscales.entity.DragonCommand;
 import net.basilisk.heartofscales.entity.DragonEntity;
+import net.basilisk.heartofscales.species.stats.SwimStats;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -14,8 +15,6 @@ import java.util.EnumSet;
 /** A water-bound dragon on land walks to the nearest water it can find. Lower priority than sit, flee, breed and follow. */
 public class ReturnToWaterGoal extends Goal {
     private static final int SAMPLES = 32;
-    private static final int HORIZONTAL_RANGE = 16;
-    private static final int VERTICAL_RANGE = 4;
     private static final int RETRY_TICKS = 40;
 
     private final DragonEntity dragon;
@@ -67,11 +66,14 @@ public class ReturnToWaterGoal extends Goal {
         BlockPos origin = dragon.blockPosition();
         BlockPos best = null;
         double bestDistance = Double.MAX_VALUE;
+        SwimStats swim = dragon.getStats().swim();
+        int horizontal = swim.returnHorizontalRange();
+        int vertical = swim.returnVerticalRange();
         for (int i = 0; i < SAMPLES; i++) {
             BlockPos candidate = origin.offset(
-                    dragon.getRandom().nextInt(HORIZONTAL_RANGE * 2 + 1) - HORIZONTAL_RANGE,
-                    dragon.getRandom().nextInt(VERTICAL_RANGE * 2 + 1) - VERTICAL_RANGE,
-                    dragon.getRandom().nextInt(HORIZONTAL_RANGE * 2 + 1) - HORIZONTAL_RANGE);
+                    dragon.getRandom().nextInt(horizontal * 2 + 1) - horizontal,
+                    dragon.getRandom().nextInt(vertical * 2 + 1) - vertical,
+                    dragon.getRandom().nextInt(horizontal * 2 + 1) - horizontal);
             if (!level.getFluidState(candidate).is(FluidTags.WATER)) continue;
             BlockState above = level.getBlockState(candidate.above());
             if (!above.isAir() && !above.getFluidState().is(FluidTags.WATER)) continue;

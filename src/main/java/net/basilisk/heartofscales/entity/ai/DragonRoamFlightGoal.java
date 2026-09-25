@@ -2,6 +2,7 @@ package net.basilisk.heartofscales.entity.ai;
 
 import net.basilisk.heartofscales.entity.DragonCommand;
 import net.basilisk.heartofscales.entity.DragonEntity;
+import net.basilisk.heartofscales.species.stats.FlightStats;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -18,17 +19,10 @@ import java.util.EnumSet;
  * Targets go straight to the move control (no pathfinder) so the flight is one continuous curve.
  */
 public class DragonRoamFlightGoal extends Goal {
-    private static final int TAKEOFF_CHANCE = 600;
-    private static final int MIN_FLIGHT_TICKS = 300;
-    private static final int MAX_FLIGHT_TICKS = 600;
-    private static final double MIN_TARGET_DISTANCE = 8.0;
-    private static final double MAX_TARGET_DISTANCE = 16.0;
     private static final float CONE_HALF_ANGLE = 60.0f;
     private static final int TARGET_ATTEMPTS = 8;
     /** Pick the next target once this close to the current one, so the dragon never slows to arrive. */
     private static final double NEXT_TARGET_DISTANCE_SQR = 3.0 * 3.0;
-    private static final int MIN_HEIGHT_ABOVE_GROUND = 3;
-    private static final int MAX_HEIGHT_ABOVE_GROUND = 12;
     private static final int GROUND_SEARCH_DEPTH = 24;
     private static final int STUCK_TICKS = 40;
     /** Stuck this many times in one flight -> give up and land. */
@@ -59,7 +53,7 @@ public class DragonRoamFlightGoal extends Goal {
                 && !dragon.isInSittingPose()
                 && !dragon.isInLove()
                 && dragon.getCommand() != DragonCommand.SIT
-                && dragon.getRandom().nextInt(reducedTickDelay(TAKEOFF_CHANCE)) == 0;
+                && dragon.getRandom().nextInt(reducedTickDelay(stats().roamTakeoffChance())) == 0;
     }
 
     @Override
@@ -70,7 +64,7 @@ public class DragonRoamFlightGoal extends Goal {
     @Override
     public void start() {
         dragon.setFlying(true);
-        flightTicksLeft = MIN_FLIGHT_TICKS + dragon.getRandom().nextInt(MAX_FLIGHT_TICKS - MIN_FLIGHT_TICKS);
+        flightTicksLeft = stats().roamMinTicks() + dragon.getRandom().nextInt(Math.max(1, stats().roamMaxTicks() - stats().roamMinTicks()));
         landing = false;
         stuckTicks = 0;
         stuckRetargets = 0;
@@ -147,14 +141,19 @@ public class DragonRoamFlightGoal extends Goal {
         return candidate != null ? candidate : tryTargets(180.0f);
     }
 
+    private FlightStats stats() {
+        return dragon.getStats().flight();
+    }
+
     @Nullable
     private Vec3 tryTargets(float halfAngle) {
+        FlightStats flight = stats();
         for (int i = 0; i < TARGET_ATTEMPTS; i++) {
-            Vec3 ahead = pointAhead(halfAngle, MIN_TARGET_DISTANCE, MAX_TARGET_DISTANCE);
+            Vec3 ahead = pointAhead(halfAngle, flight.roamMinDistance(), flight.roamMaxDistance());
             int ground = groundBelow(BlockPos.containing(ahead));
             if (ground == Integer.MIN_VALUE) continue;
-            double y = ground + 1 + MIN_HEIGHT_ABOVE_GROUND
-                    + dragon.getRandom().nextInt(MAX_HEIGHT_ABOVE_GROUND - MIN_HEIGHT_ABOVE_GROUND + 1);
+            double y = ground + 1 + flight.roamMinHeight()
+                    + dragon.getRandom().nextInt(Math.max(1, flight.roamMaxHeight() - flight.roamMinHeight() + 1));
             Vec3 candidate = new Vec3(ahead.x, y, ahead.z);
             if (isAllowed(candidate) && hasClearLine(candidate)) return candidate;
         }

@@ -1,7 +1,8 @@
 package net.basilisk.heartofscales.entity.ai;
 
+import net.basilisk.heartofscales.entity.DragonEntity;
+import net.basilisk.heartofscales.species.stats.FlightStats;
 import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.control.MoveControl;
 import net.minecraft.world.phys.Vec3;
@@ -12,14 +13,15 @@ import net.minecraft.world.phys.Vec3;
  * Gravity is not touched here; DragonEntity.setFlying owns that.
  */
 public class DragonFlightMoveControl extends MoveControl {
-    private static final float MAX_YAW_TURN = 3.0f;
-    private static final float MAX_PITCH_TURN = 10.0f;
     /** Vertical input reaches full strength when the target is this many blocks above or below. */
     private static final double CLIMB_FULL_STRENGTH_DISTANCE = 4.0;
     private static final double REACHED_DISTANCE_SQR = 1.0;
 
-    public DragonFlightMoveControl(Mob mob) {
-        super(mob);
+    private final DragonEntity dragon;
+
+    public DragonFlightMoveControl(DragonEntity dragon) {
+        super(dragon);
+        this.dragon = dragon;
     }
 
     @Override
@@ -39,8 +41,9 @@ public class DragonFlightMoveControl extends MoveControl {
             return;
         }
 
+        FlightStats flight = dragon.getStats().flight();
         float wantedYaw = (float) (Mth.atan2(dz, dx) * Mth.RAD_TO_DEG) - 90.0f;
-        float yaw = rotlerp(mob.getYRot(), wantedYaw, MAX_YAW_TURN);
+        float yaw = rotlerp(mob.getYRot(), wantedYaw, flight.aiMaxYawTurn());
         mob.setYRot(yaw);
         mob.yBodyRot = yaw;
         mob.yHeadRot = yaw;
@@ -49,7 +52,7 @@ public class DragonFlightMoveControl extends MoveControl {
         Vec3 velocity = mob.getDeltaMovement();
         double horizontalSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
         float wantedPitch = (float) -(Mth.atan2(velocity.y, horizontalSpeed) * Mth.RAD_TO_DEG);
-        mob.setXRot(rotlerp(mob.getXRot(), wantedPitch, MAX_PITCH_TURN));
+        mob.setXRot(rotlerp(mob.getXRot(), wantedPitch, flight.aiMaxPitchTurn()));
 
         float speed = (float) (speedModifier * mob.getAttributeValue(Attributes.FLYING_SPEED));
         mob.setSpeed(speed);

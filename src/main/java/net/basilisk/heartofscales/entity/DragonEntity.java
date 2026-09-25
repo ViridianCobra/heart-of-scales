@@ -18,6 +18,14 @@ import net.basilisk.heartofscales.nbt.GenomeNbt;
 import net.basilisk.heartofscales.species.DragonSpecies;
 import net.basilisk.heartofscales.species.ModRegistries;
 import net.basilisk.heartofscales.species.SpeciesGroup;
+import net.basilisk.heartofscales.species.stats.AttributeStats;
+import net.basilisk.heartofscales.species.stats.DragonStats;
+import net.basilisk.heartofscales.species.stats.FlightStats;
+import net.basilisk.heartofscales.species.stats.GlideStats;
+import net.basilisk.heartofscales.species.stats.GroundStats;
+import net.basilisk.heartofscales.species.stats.HomeStats;
+import net.basilisk.heartofscales.species.stats.StaminaStats;
+import net.basilisk.heartofscales.species.stats.TamingStats;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -57,6 +65,8 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.event.ForgeEventFactory;
 import net.minecraftforge.network.NetworkHooks;
 import org.jetbrains.annotations.Nullable;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.control.MoveControl;
@@ -83,7 +93,6 @@ import software.bernie.geckolib.core.animation.AnimationController;
 import software.bernie.geckolib.core.animation.RawAnimation;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
-import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 
@@ -119,110 +128,16 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private static final double SADDLE_HEIGHT = 1.1;
     /** Height the body pitches and rolls about in flight; must match DragonRenderer's pivot. */
     public static final double BODY_PIVOT_HEIGHT = 0.9;
-    private static final float RIDDEN_STRAFE_FACTOR = 0.5f;
-    private static final float RIDDEN_REVERSE_FACTOR = 0.25f;
-    // Ridden flight: velocity is set directly from the rider's look, not through vanilla air physics
-    private static final double RIDDEN_FLIGHT_SPEED_FACTOR = 1.0;
-    private static final double RIDDEN_ASCEND_INPUT = 0.8;
-    /** How quickly free-mode velocity snaps to the wanted direction per tick (1 = instant). */
-    private static final double FREE_MODE_RESPONSIVENESS = 0.3;
-    /** Ticks after take-off before touching the ground counts as landing. */
-    private static final int LANDING_GRACE_TICKS = 10;
-    // Vanilla's in-water travel ignores the mob's speed, so swimming pushes itself like a dolphin.
-    // Cruise settles at SWIM_ACCEL * SWIM_DRAG / (1 - SWIM_DRAG) blocks per tick: about 0.54, just under flight cruise.
-    private static final double SWIM_ACCEL = 0.06;
-    private static final double SWIM_DRAG = 0.9;
-    /** Ridden swimming chases the wanted velocity at half the rate of free flight, for a heavier feel in water. */
-    private static final double RIDDEN_SWIM_RESPONSIVENESS = 0.15;
-    // Glide mode: the heading chases the rider's look at a limited rate and speed is carried as momentum.
-    // Speeds are in blocks per tick relative to FLYING_SPEED (cruise = 1.0 x attribute).
-    private static final float GLIDE_YAW_RATE = 4.0f;
-    private static final float GLIDE_PITCH_RATE = 3.0f;
-    private static final double GLIDE_MAX_SPEED_FACTOR = 3.5;
-    private static final double GLIDE_STALL_SPEED_FACTOR = 0.5;
-    /**
-     * Pitch band, in degrees below the horizon, where speed holds steady. Nose above it loses speed, nose below
-     * it gains, so level flight slowly runs out of momentum.
-     */
-    private static final float GLIDE_NEUTRAL_PITCH_MIN = 4.0f;
-    private static final float GLIDE_NEUTRAL_PITCH_MAX = 6.0f;
-    /** Speed gained per tick in a vertical dive (scaled by sin of the angle past the band). */
-    private static final double GLIDE_DIVE_ACCEL = 0.06;
-    /**
-     * Speed lost per tick in a vertical climb at cruise speed (scaled by sin of the angle past the band). Above
-     * cruise the loss grows with speed, so a fast sweep upward sheds its extra speed quickly, then eases off.
-     */
-    private static final double GLIDE_CLIMB_DECEL = 0.042;
-    // Free cam: while it is switched on the body ignores the rider's look and keeps its own heading, so the mouse
-    // is left to the camera. Gliding, W and S pitch that heading and A and D bank into a turn; the turn rate ramps
-    // so the visual roll, which comes from the yaw rate, leans in and out like a plane.
-    private static final float FREE_CAM_KEY_PITCH_RATE = 2.5f;
-    private static final float FREE_CAM_BANK_TURN_RATE = 3.0f;
-    private static final float FREE_CAM_BANK_SMOOTHING = 0.15f;
-    /** Stalled in free cam, the assist tips the body itself into a dive, since the look no longer steers it. */
-    private static final float FREE_CAM_STALL_ASSIST_PITCH = 30.0f;
-    private static final float FREE_CAM_STALL_ASSIST_RATE = 4.0f;
-    /** Free flight levels its pitch at this rate once free cam is on, degrees per tick. */
-    private static final float FREE_CAM_LEVEL_RATE = 4.0f;
-    /** After free cam is switched off in free flight the body swings to the look at this rate instead of snapping. */
-    private static final float FREE_CAM_RELEASE_TURN_RATE = 8.0f;
-    /** How far the head may turn from the body to follow the rider's look in free cam, degrees. */
-    private static final float FREE_CAM_HEAD_YAW_LIMIT = 70.0f;
-    // Sprint: the rider holds vanilla's Sprint key to fly faster at a stamina cost. Stamina is counted in ticks of
-    // sprinting, lives on the server and is synced, and refills whenever the dragon is not sprinting.
-    private static final float STAMINA_MAX = 100.0f;
-    /** How long a full bar lasts while sprinting. */
-    private static final float STAMINA_DRAIN_SECONDS = 5.0f;
-    /** Unit of sprint used every tick. */
-    private static final float STAMINA_DRAIN = STAMINA_MAX / (STAMINA_DRAIN_SECONDS * 20.0f);
-    private static final float STAMINA_REGEN = 0.5f;
-    private static final int STAMINA_REGEN_DELAY_TICKS = 20;
-    /** Run dry and sprinting is locked until this much has come back, so an empty bar cannot stutter-sprint. */
-    private static final float STAMINA_RECOVERED_FRACTION = 0.25f;
-    /** Free flight and swimming: sprint multiplies the speed while moving. */
-    private static final double SPRINT_SPEED_FACTOR = 3;
-    /** Glide: sprinting raises the top speed by this many blocks per second above the normal dive cap. */
-    private static final double GLIDE_SPRINT_EXTRA_SPEED = 10.0 / 20.0;
-    /** Glide sprint is powered wingbeats: speed added per tick, up to the raised cap. */
-    private static final double GLIDE_SPRINT_ACCEL = 0.025;
-    /** Speed shed per tick when sprint is released above the normal cap, so the drop is eased rather than instant. */
-    private static final double GLIDE_SPRINT_EXCESS_BLEED = 0.05;
-    /** How quickly the glide side-slip reaches full strafe speed per tick (1 = instant). */
-    private static final double GLIDE_STRAFE_RESPONSIVENESS = 0.2;
-    // Below stall speed the wings stop carrying the dragon and it falls faster each tick until it has speed again.
-    // The ramp is gentle so there is a moment of hang at the top of a climb to get the nose down.
-    private static final double GLIDE_STALL_FALL_ACCEL = 0.015;
-    private static final double GLIDE_STALL_FALL_MAX = 0.6;
-    private static final double GLIDE_STALL_FALL_RECOVERY = 0.8;
-    /** Stalled, the nose answers the look this fast, so a dive can be set up in under a second. */
-    private static final float GLIDE_STALL_PITCH_RATE = 9.0f;
-    /** Share of the fall turned into glide speed each tick once the nose is below the band: the dive catching. */
-    private static final double GLIDE_STALL_FALL_TO_SPEED = 0.25;
-    /** Stalled this long, RiderInputHandler starts easing the rider's look down into a dive. */
-    private static final int GLIDE_STALL_ASSIST_DELAY_TICKS = 10;
     /** Marks glideSpeed as not yet seeded; the first glide tick takes the speed the dragon already has. */
     private static final double GLIDE_SPEED_UNSET = -1.0;
-    // Visual roll, client side. Glide banks from the yaw rate; free flight also leans into a strafe and lifts
-    // the nose when backing up. Both come from yaw and position changes, which are already synced.
-    private static final float ROLL_PER_YAW_DEGREE = 8.0f;
-    private static final float MAX_ROLL = 50.0f;
-    private static final float ROLL_SMOOTHING = 0.15f;
-    private static final float FREE_STRAFE_ROLL = 25.0f;
-    private static final float FREE_REVERSE_PITCH = 20.0f;
-    // Wandering dragons stay in a 33 x 33 box centred on their home beacon, from 3 below it to 17 above
-    private static final int HOME_RANGE_HORIZONTAL = 16;
-    private static final int HOME_RANGE_DOWN = 3;
-    private static final int HOME_RANGE_UP = 17;
-    private static final int HOME_CHECK_INTERVAL = 20;
-    private static final int TAME_THRESHOLD = 300;
-    private static final int FOOD_TAME_STEP = 10;
-    private static final int FAVOURITE_FOOD_TAME_STEP = 30;
     private static final RawAnimation SIT = RawAnimation.begin().thenLoop("misc.sit");
     private static final RawAnimation FLY = RawAnimation.begin().thenLoop("misc.fly");
 
     private final AnimatableInstanceCache geoCache = GeckoLibUtil.createInstanceCache(this);
     private DragonGenome genome = DragonGenome.defaultGenome();
     private boolean genomeAssigned;
+    // Resolved from the genome's subspecies id; never null, so stats can be read before the first sync arrives
+    private DragonSpecies species = DragonSpecies.DEFAULT;
     private int tameProgress;
     @Nullable
     private GlobalPos home;
@@ -283,7 +198,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         entityData.define(DATA_SWIM_MODE, false);
         entityData.define(DATA_SADDLED, false);
         entityData.define(DATA_FLIGHT_MODE, (byte) FlightMode.FREE.ordinal());
-        entityData.define(DATA_STAMINA, STAMINA_MAX);
+        entityData.define(DATA_STAMINA, StaminaStats.DEFAULT.max());
         entityData.define(DATA_EXHAUSTED, false);
     }
 
@@ -324,7 +239,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
 
     /** Stamina left, 0 to 1. */
     public float getStaminaFraction() {
-        return entityData.get(DATA_STAMINA) / STAMINA_MAX;
+        return entityData.get(DATA_STAMINA) / getStats().stamina().max();
     }
 
     public boolean isExhausted() {
@@ -344,28 +259,29 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     }
 
     private void tickStamina() {
+        StaminaStats stats = getStats().stamina();
         float stamina = entityData.get(DATA_STAMINA);
         if (isSprinting()) {
-            stamina = Math.max(0.0f, stamina - STAMINA_DRAIN);
+            stamina = Math.max(0.0f, stamina - stats.drainPerTick());
             staminaRestTicks = 0;
             if (stamina <= 0.0f) entityData.set(DATA_EXHAUSTED, true);
-        } else if (staminaRestTicks < STAMINA_REGEN_DELAY_TICKS) {
+        } else if (staminaRestTicks < stats.regenDelayTicks()) {
             staminaRestTicks++;
         } else {
-            stamina = Math.min(STAMINA_MAX, stamina + STAMINA_REGEN);
+            stamina = Math.min(stats.max(), stamina + stats.regen());
         }
-        if (isExhausted() && stamina >= STAMINA_MAX * STAMINA_RECOVERED_FRACTION) entityData.set(DATA_EXHAUSTED, false);
+        if (isExhausted() && stamina >= stats.recoveredThreshold()) entityData.set(DATA_EXHAUSTED, false);
         entityData.set(DATA_STAMINA, stamina);
     }
 
     /** True on the rider's client while a glide is below stall speed; glide speed is only simulated there. */
     public boolean isGlideStalling() {
         return isFlying() && getFlightMode() == FlightMode.GLIDE && glideSpeed >= 0
-                && glideSpeed < getAttributeValue(Attributes.FLYING_SPEED) * RIDDEN_FLIGHT_SPEED_FACTOR * GLIDE_STALL_SPEED_FACTOR;
+                && glideSpeed < flightCruiseSpeed() * getStats().glide().stallSpeedFactor();
     }
 
     public boolean isStallAssistActive() {
-        return isGlideStalling() && glideStallTicks > GLIDE_STALL_ASSIST_DELAY_TICKS;
+        return isGlideStalling() && glideStallTicks > getStats().glide().stallAssistDelayTicks();
     }
 
     public SimpleContainer getInventory() {
@@ -393,12 +309,12 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
 
     /** Whether this dragon's species can fly at all. */
     public boolean canFly() {
-        return ModRegistries.species(level().registryAccess(), getSubspecies()).map(DragonSpecies::flies).orElse(false);
+        return species.flies();
     }
 
     /** Whether this dragon's species swims. Water-bound species crawl on land and roam in water. */
     public boolean canSwim() {
-        return ModRegistries.species(level().registryAccess(), getSubspecies()).map(DragonSpecies::swims).orElse(false);
+        return species.swims();
     }
 
     public boolean isFlying() {
@@ -429,7 +345,12 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
 
     /** The speed AI swimming settles at under its push and drag; ridden swimming cruises at the same. */
     public double swimCruiseSpeed() {
-        return SWIM_ACCEL * SWIM_DRAG / (1 - SWIM_DRAG);
+        return getStats().swim().cruiseSpeed();
+    }
+
+    /** Ridden free-flight cruise speed in blocks per tick: the flying speed attribute scaled by the species factor. */
+    public double flightCruiseSpeed() {
+        return getAttributeValue(Attributes.FLYING_SPEED) * getStats().flight().riddenSpeedFactor();
     }
 
     /** The only place the swim move control, navigation and gravity are switched. Server side. */
@@ -456,11 +377,49 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         this.genome = genome;
         this.genomeAssigned = true;
         entityData.set(DATA_SUBSPECIES, genome.subspecies());
+        resolveSpecies();
+        applyAttributes();
     }
 
     /** Synced to clients, unlike the full genome. */
     public String getSubspecies() {
         return entityData.get(DATA_SUBSPECIES);
+    }
+
+    /** The subspecies entry this dragon was resolved to, or the default if its id is unknown. */
+    public DragonSpecies getSpecies() {
+        return species;
+    }
+
+    /** The tunable numbers for this dragon's subspecies. */
+    public DragonStats getStats() {
+        return species.stats();
+    }
+
+    private void resolveSpecies() {
+        species = ModRegistries.speciesOrDefault(level().registryAccess(), getSubspecies());
+    }
+
+    /** The client learns the subspecies through synced data, so it resolves the species there rather than in setGenome. */
+    @Override
+    public void onSyncedDataUpdated(EntityDataAccessor<?> key) {
+        super.onSyncedDataUpdated(key);
+        if (DATA_SUBSPECIES.equals(key) && level().isClientSide) resolveSpecies();
+    }
+
+    /** Sets the base attributes from the species. Leaves current health alone, so a loaded dragon keeps what it had. */
+    private void applyAttributes() {
+        AttributeStats stats = getStats().attributes();
+        setBaseAttribute(Attributes.MAX_HEALTH, stats.maxHealth());
+        setBaseAttribute(Attributes.MOVEMENT_SPEED, stats.movementSpeed());
+        setBaseAttribute(Attributes.FLYING_SPEED, stats.flyingSpeed());
+        setBaseAttribute(Attributes.ATTACK_DAMAGE, stats.attackDamage());
+        setBaseAttribute(Attributes.FOLLOW_RANGE, stats.followRange());
+    }
+
+    private void setBaseAttribute(Attribute attribute, double value) {
+        AttributeInstance instance = getAttribute(attribute);
+        if (instance != null) instance.setBaseValue(value);
     }
 
     @Override
@@ -469,8 +428,9 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         if (!genomeAssigned) {
             level.registryAccess().registry(ModRegistries.DRAGON_SPECIES)
                     .flatMap(registry -> registry.getRandom(random))
-                    .ifPresent(species -> setGenome(new DragonGenome(species.key().location().toString())));
+                    .ifPresent(entry -> setGenome(new DragonGenome(entry.key().location().toString())));
         }
+        setHealth(getMaxHealth());
         return super.finalizeSpawn(level, difficulty, reason, spawnData, dataTag);
     }
 
@@ -660,17 +620,18 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     // so it has to reach the corners of the box
     @Override
     public float getRestrictRadius() {
-        return isHomeBound() ? HOME_RANGE_HORIZONTAL * 1.5f : super.getRestrictRadius();
+        return isHomeBound() ? getStats().home().rangeHorizontal() * 1.5f : super.getRestrictRadius();
     }
 
     @Override
     public boolean isWithinRestriction(BlockPos pos) {
         if (!isHomeBound()) return super.isWithinRestriction(pos);
         BlockPos beacon = home.pos();
-        return Math.abs(pos.getX() - beacon.getX()) <= HOME_RANGE_HORIZONTAL
-                && Math.abs(pos.getZ() - beacon.getZ()) <= HOME_RANGE_HORIZONTAL
-                && pos.getY() >= beacon.getY() - HOME_RANGE_DOWN
-                && pos.getY() <= beacon.getY() + HOME_RANGE_UP;
+        HomeStats range = getStats().home();
+        return Math.abs(pos.getX() - beacon.getX()) <= range.rangeHorizontal()
+                && Math.abs(pos.getZ() - beacon.getZ()) <= range.rangeHorizontal()
+                && pos.getY() >= beacon.getY() - range.rangeDown()
+                && pos.getY() <= beacon.getY() + range.rangeUp();
     }
 
     @Override
@@ -688,7 +649,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             groundNavigation.setCanFloat(true);
             swimNavigationConfigured = true;
         }
-        if (home == null || tickCount % HOME_CHECK_INTERVAL != 0) return;
+        if (home == null || tickCount % getStats().home().checkIntervalTicks() != 0) return;
         if (isWalkingHome()) DragonHomecoming.track(this);
         if (isHomeInThisDimension() && level().isLoaded(home.pos())) {
             BlockState state = level().getBlockState(home.pos());
@@ -714,25 +675,27 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         if (!freeCam && wasFreeCam) freeCamCatchingUp = true;
         wasFreeCam = freeCam;
 
+        FlightStats flight = getStats().flight();
         if (isFlying() && getFlightMode() == FlightMode.GLIDE) {
             // Glide speed lives on the rider's client, so only that side ever sees a stall
+            GlideStats glide = getStats().glide();
             boolean stalling = isGlideStalling();
             glideStallTicks = stalling ? glideStallTicks + 1 : 0;
             if (freeCam) {
                 tickFreeCamGlide(rider);
             } else {
                 // Momentum: the heading lags behind the look
-                setRot(Mth.approachDegrees(getYRot(), rider.getYRot(), GLIDE_YAW_RATE),
-                        Mth.approachDegrees(getXRot(), rider.getXRot(), stalling ? GLIDE_STALL_PITCH_RATE : GLIDE_PITCH_RATE));
+                setRot(Mth.approachDegrees(getYRot(), rider.getYRot(), glide.yawRate()),
+                        Mth.approachDegrees(getXRot(), rider.getXRot(), stalling ? glide.stallPitchRate() : glide.pitchRate()));
             }
             freeCamCatchingUp = false;
         } else if (freeCam) {
             // Free flight keeps its yaw and levels out, so WASD moves flat along the heading and Ascend and
             // Descend handle height. Holding whatever pitch the look happened to have would leave it stuck nose up or down.
-            setRot(getYRot(), Mth.approach(getXRot(), 0.0f, FREE_CAM_LEVEL_RATE));
+            setRot(getYRot(), Mth.approach(getXRot(), 0.0f, flight.freeCamLevelRate()));
         } else if (isInFluidMode() && freeCamCatchingUp) {
-            setRot(Mth.approachDegrees(getYRot(), rider.getYRot(), FREE_CAM_RELEASE_TURN_RATE),
-                    Mth.approachDegrees(getXRot(), rider.getXRot(), FREE_CAM_RELEASE_TURN_RATE));
+            setRot(Mth.approachDegrees(getYRot(), rider.getYRot(), flight.freeCamReleaseTurnRate()),
+                    Mth.approachDegrees(getXRot(), rider.getXRot(), flight.freeCamReleaseTurnRate()));
             freeCamCatchingUp = Math.abs(Mth.degreesDifference(getYRot(), rider.getYRot())) > 1.0f
                     || Math.abs(getXRot() - rider.getXRot()) > 1.0f;
         } else {
@@ -741,7 +704,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         }
         yRotO = yBodyRot = yHeadRot = getYRot();
         if (freeCam) {
-            yHeadRot += Mth.clamp(Mth.wrapDegrees(rider.getYRot() - getYRot()), -FREE_CAM_HEAD_YAW_LIMIT, FREE_CAM_HEAD_YAW_LIMIT);
+            yHeadRot += Mth.clamp(Mth.wrapDegrees(rider.getYRot() - getYRot()), -flight.freeCamHeadYawLimit(), flight.freeCamHeadYawLimit());
         }
 
         RiddenSwimming.tickMode(this);
@@ -754,16 +717,18 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             return;
         }
         riddenFlightTicks++;
-        if (onGround() && !riderAscending && riddenFlightTicks > LANDING_GRACE_TICKS) setFlying(false);
+        if (onGround() && !riderAscending && riddenFlightTicks > flight.landingGraceTicks()) setFlying(false);
     }
 
     /** Free cam glide: the keys steer the body's own heading. A is left, which is a falling yaw; W is nose down. */
     private void tickFreeCamGlide(Player rider) {
-        float wantedTurn = -Math.signum(rider.xxa) * FREE_CAM_BANK_TURN_RATE;
-        bankTurnRate += (wantedTurn - bankTurnRate) * FREE_CAM_BANK_SMOOTHING;
-        float pitch = getXRot() + Math.signum(rider.zza) * FREE_CAM_KEY_PITCH_RATE;
-        if (isStallAssistActive() && pitch < FREE_CAM_STALL_ASSIST_PITCH) {
-            pitch = Math.min(FREE_CAM_STALL_ASSIST_PITCH, pitch + FREE_CAM_STALL_ASSIST_RATE);
+        FlightStats flight = getStats().flight();
+        GlideStats glide = getStats().glide();
+        float wantedTurn = -Math.signum(rider.xxa) * flight.freeCamBankTurnRate();
+        bankTurnRate += (wantedTurn - bankTurnRate) * flight.freeCamBankSmoothing();
+        float pitch = getXRot() + Math.signum(rider.zza) * flight.freeCamKeyPitchRate();
+        if (isStallAssistActive() && pitch < glide.freeCamStallAssistPitch()) {
+            pitch = Math.min(glide.freeCamStallAssistPitch(), pitch + glide.freeCamStallAssistRate());
         }
         setRot(getYRot() + bankTurnRate, Mth.clamp(pitch, -90.0f, 90.0f));
     }
@@ -782,8 +747,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             return;
         }
         if (isInSwimMode() && getControllingPassenger() instanceof Player rider && isControlledByLocalInstance()) {
-            travelFreeSteered(rider, input, swimCruiseSpeed() * (isSprinting() ? SPRINT_SPEED_FACTOR : 1.0),
-                    RIDDEN_SWIM_RESPONSIVENESS, true);
+            travelFreeSteered(rider, input, swimCruiseSpeed() * (isSprinting() ? getStats().ground().sprintSpeedFactor() : 1.0),
+                    getStats().swim().riddenResponsiveness(), true);
             return;
         }
         if (isInSwimMode() && isEffectiveAi() && !isVehicle()) {
@@ -796,10 +761,10 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     /** The move control's input gives the direction; a fixed push and drag give the speed. */
     private void travelSwimming(Vec3 input) {
         if (input.lengthSqr() > 1.0e-7) {
-            setDeltaMovement(getDeltaMovement().add(input.normalize().scale(SWIM_ACCEL).yRot((float) -Math.toRadians(getYRot()))));
+            setDeltaMovement(getDeltaMovement().add(input.normalize().scale(getStats().swim().accel()).yRot((float) -Math.toRadians(getYRot()))));
         }
         move(MoverType.SELF, getDeltaMovement());
-        setDeltaMovement(getDeltaMovement().scale(SWIM_DRAG));
+        setDeltaMovement(getDeltaMovement().scale(getStats().swim().drag()));
         calculateEntityAnimation(false);
     }
 
@@ -817,9 +782,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         glideFallSpeed = 0;
         glideStallTicks = 0;
         glideStrafe = 0;
-        double speed = getAttributeValue(Attributes.FLYING_SPEED) * RIDDEN_FLIGHT_SPEED_FACTOR
-                * (isSprinting() ? SPRINT_SPEED_FACTOR : 1.0);
-        travelFreeSteered(rider, input, speed, FREE_MODE_RESPONSIVENESS, false);
+        double speed = flightCruiseSpeed() * (isSprinting() ? getStats().ground().sprintSpeedFactor() : 1.0);
+        travelFreeSteered(rider, input, speed, getStats().flight().freeResponsiveness(), false);
     }
 
     /**
@@ -832,8 +796,9 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         Vec3 left = new Vec3(Math.cos(yaw), 0, Math.sin(yaw));
         Vec3 forward = riderFreeCam ? Vec3.directionFromRotation(getXRot(), getYRot()) : rider.getLookAngle();
         Vec3 wanted = forward.scale(input.z).add(left.scale(input.x));
-        if (riderAscending) wanted = wanted.add(0, RIDDEN_ASCEND_INPUT, 0);
-        if (riderDescending) wanted = wanted.add(0, -RIDDEN_ASCEND_INPUT, 0);
+        double ascend = getStats().flight().ascendInput();
+        if (riderAscending) wanted = wanted.add(0, ascend, 0);
+        if (riderDescending) wanted = wanted.add(0, -ascend, 0);
         if (wanted.lengthSqr() > 1.0) wanted = wanted.normalize();
         wanted = wanted.scale(speed);
         if (capAtSurface) wanted = RiddenSwimming.capAtSurface(this, wanted);
@@ -852,41 +817,42 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
      * dragon falls until a dive gives speed back.
      */
     private void travelGliding(Vec3 input) {
-        double cruise = getAttributeValue(Attributes.FLYING_SPEED) * RIDDEN_FLIGHT_SPEED_FACTOR;
-        double stallSpeed = cruise * GLIDE_STALL_SPEED_FACTOR;
+        GlideStats glide = getStats().glide();
+        double cruise = flightCruiseSpeed();
+        double stallSpeed = cruise * glide.stallSpeedFactor();
         if (glideSpeed < 0) glideSpeed = Math.max(getDeltaMovement().length(), stallSpeed);
 
         // XRot is positive nose-down, so the band sits at +4..+6
         float pitch = getXRot();
-        float pastBand = pitch > GLIDE_NEUTRAL_PITCH_MAX ? pitch - GLIDE_NEUTRAL_PITCH_MAX
-                : pitch < GLIDE_NEUTRAL_PITCH_MIN ? pitch - GLIDE_NEUTRAL_PITCH_MIN : 0.0f;
+        float pastBand = pitch > glide.neutralPitchMax() ? pitch - glide.neutralPitchMax()
+                : pitch < glide.neutralPitchMin() ? pitch - glide.neutralPitchMin() : 0.0f;
         double pitchEffect = Math.sin(Math.toRadians(pastBand));
         boolean sprinting = isSprinting();
         if (pitchEffect > 0) {
-            glideSpeed += pitchEffect * GLIDE_DIVE_ACCEL;
+            glideSpeed += pitchEffect * glide.diveAccel();
         } else if (!sprinting) {
             // Powered wingbeats hold speed through a climb; only an unpowered glide bleeds it
-            glideSpeed += pitchEffect * GLIDE_CLIMB_DECEL * Math.max(1.0, glideSpeed / cruise);
+            glideSpeed += pitchEffect * glide.climbDecel() * Math.max(1.0, glideSpeed / cruise);
         }
-        double maxSpeed = cruise * GLIDE_MAX_SPEED_FACTOR;
-        double sprintMaxSpeed = maxSpeed + GLIDE_SPRINT_EXTRA_SPEED;
+        double maxSpeed = cruise * glide.maxSpeedFactor();
+        double sprintMaxSpeed = maxSpeed + glide.sprintExtraSpeed();
         if (sprinting) {
             // Nose above the band: wingbeats only hold what you have. In the band or diving they add.
-            if (pitchEffect >= 0) glideSpeed = Math.min(sprintMaxSpeed, glideSpeed + GLIDE_SPRINT_ACCEL);
+            if (pitchEffect >= 0) glideSpeed = Math.min(sprintMaxSpeed, glideSpeed + glide.sprintAccel());
         } else if (glideSpeed > maxSpeed) {
-            glideSpeed = Math.max(maxSpeed, glideSpeed - GLIDE_SPRINT_EXCESS_BLEED);
+            glideSpeed = Math.max(maxSpeed, glideSpeed - glide.sprintExcessBleed());
         }
         if (glideSpeed < stallSpeed && pastBand > 0) {
-            double caught = glideFallSpeed * GLIDE_STALL_FALL_TO_SPEED;
+            double caught = glideFallSpeed * glide.stallFallToSpeed();
             glideSpeed += caught;
             glideFallSpeed -= caught;
         }
         glideSpeed = Mth.clamp(glideSpeed, 0.0, sprintMaxSpeed);
 
-        if (glideSpeed < stallSpeed) glideFallSpeed = Math.min(GLIDE_STALL_FALL_MAX, glideFallSpeed + GLIDE_STALL_FALL_ACCEL);
-        else glideFallSpeed *= GLIDE_STALL_FALL_RECOVERY;
+        if (glideSpeed < stallSpeed) glideFallSpeed = Math.min(glide.stallFallMax(), glideFallSpeed + glide.stallFallAccel());
+        else glideFallSpeed *= glide.stallFallRecovery();
 
-        glideStrafe += (input.x * cruise - glideStrafe) * GLIDE_STRAFE_RESPONSIVENESS;
+        glideStrafe += (input.x * cruise - glideStrafe) * glide.strafeResponsiveness();
         double yaw = Math.toRadians(getYRot());
         Vec3 left = new Vec3(Math.cos(yaw), 0, Math.sin(yaw));
         Vec3 velocity = Vec3.directionFromRotation(getXRot(), getYRot()).scale(glideSpeed)
@@ -919,32 +885,34 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         tiltPitchO = tiltPitch;
         float yawDelta = Mth.degreesDifference(lastYaw, getYRot());
         lastYaw = getYRot();
+        FlightStats flight = getStats().flight();
+        GroundStats ground = getStats().ground();
         float targetRoll = 0.0f;
         float targetPitch = 0.0f;
         if (isInFluidMode() && getControllingPassenger() != null) {
-            targetRoll = yawDelta * ROLL_PER_YAW_DEGREE;
+            targetRoll = yawDelta * flight.rollPerYawDegree();
             // Sideways and backward speed relative to the heading, as a share of full strafe / reverse speed
-            double cruise = isInSwimMode() ? swimCruiseSpeed() : getAttributeValue(Attributes.FLYING_SPEED) * RIDDEN_FLIGHT_SPEED_FACTOR;
+            double cruise = isInSwimMode() ? swimCruiseSpeed() : flightCruiseSpeed();
             double yaw = Math.toRadians(getYRot());
             double dx = getX() - xo;
             double dz = getZ() - zo;
             double rightward = dx * -Math.cos(yaw) + dz * -Math.sin(yaw);
-            targetRoll += FREE_STRAFE_ROLL * (float) Mth.clamp(rightward / (cruise * RIDDEN_STRAFE_FACTOR), -1.0, 1.0);
+            targetRoll += flight.freeStrafeRoll() * (float) Mth.clamp(rightward / (cruise * ground.riddenStrafeFactor()), -1.0, 1.0);
             if (isInSwimMode() || getFlightMode() == FlightMode.FREE) {
                 double backward = -(dx * -Math.sin(yaw) + dz * Math.cos(yaw));
-                targetPitch = -FREE_REVERSE_PITCH * (float) Mth.clamp(backward / (cruise * RIDDEN_REVERSE_FACTOR), 0.0, 1.0);
+                targetPitch = -flight.freeReversePitch() * (float) Mth.clamp(backward / (cruise * ground.riddenReverseFactor()), 0.0, 1.0);
             }
-            targetRoll = Mth.clamp(targetRoll, -MAX_ROLL, MAX_ROLL);
+            targetRoll = Mth.clamp(targetRoll, -flight.maxRoll(), flight.maxRoll());
         }
-        roll += (targetRoll - roll) * ROLL_SMOOTHING;
-        tiltPitch += (targetPitch - tiltPitch) * ROLL_SMOOTHING;
+        roll += (targetRoll - roll) * flight.rollSmoothing();
+        tiltPitch += (targetPitch - tiltPitch) * flight.rollSmoothing();
     }
 
     @Override
     protected Vec3 getRiddenInput(Player rider, Vec3 input) {
-        float strafe = rider.xxa * RIDDEN_STRAFE_FACTOR;
+        float strafe = rider.xxa * getStats().ground().riddenStrafeFactor();
         float forward = rider.zza;
-        if (forward <= 0.0f) forward *= RIDDEN_REVERSE_FACTOR;
+        if (forward <= 0.0f) forward *= getStats().ground().riddenReverseFactor();
         return new Vec3(strafe, 0.0, forward);
     }
 
@@ -1031,14 +999,14 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         ItemStack stack = player.getItemInHand(hand);
         if (stack.getItem() instanceof DragonStaffItem staff) return staff.useOnDragon(stack, player, this);
         if (!isTame()) {
-            Optional<DragonSpecies> species = ModRegistries.species(level().registryAccess(), getSubspecies());
-            if (species.isEmpty() || !species.get().isFood(stack)) return super.mobInteract(player, hand);
+            if (!species.isFood(stack)) return super.mobInteract(player, hand);
             if (level().isClientSide) return InteractionResult.CONSUME;
 
-            boolean favourite = species.get().isFavouriteFood(stack);
+            TamingStats taming = getStats().taming();
+            boolean favourite = species.isFavouriteFood(stack);
             usePlayerItem(player, hand, stack);
-            tameProgress = Math.min(TAME_THRESHOLD, tameProgress + (favourite ? FAVOURITE_FOOD_TAME_STEP : FOOD_TAME_STEP));
-            if (tameProgress >= TAME_THRESHOLD && !ForgeEventFactory.onAnimalTame(this, player)) {
+            tameProgress = Math.min(taming.threshold(), tameProgress + (favourite ? taming.favouriteFoodPoints() : taming.foodPoints()));
+            if (tameProgress >= taming.threshold() && !ForgeEventFactory.onAnimalTame(this, player)) {
                 tame(player);
                 navigation.stop();
                 level().broadcastEntityEvent(this, EntityEvent.TAMING_SUCCEEDED);
@@ -1072,16 +1040,15 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         return isTame() && stack.is(ModItems.AMORBERRY.get());
     }
 
-    public Optional<SpeciesGroup> getSpeciesGroup() {
-        return ModRegistries.species(level().registryAccess(), getSubspecies()).map(DragonSpecies::species);
+    public SpeciesGroup getSpeciesGroup() {
+        return species.species();
     }
 
     /** Vanilla checks same class + both in love; dragons must also be tamed and of the same parent species. */
     @Override
     public boolean canMate(Animal other) {
         if (!super.canMate(other) || !(other instanceof DragonEntity mate) || !isTame() || !mate.isTame()) return false;
-        Optional<SpeciesGroup> mine = getSpeciesGroup();
-        return mine.isPresent() && mine.equals(mate.getSpeciesGroup());
+        return getSpeciesGroup() == mate.getSpeciesGroup();
     }
 
     /** Dragons lay an egg carrying the child genome instead of spawning a baby. */

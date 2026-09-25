@@ -2,6 +2,7 @@ package net.basilisk.heartofscales.entity.ai;
 
 import net.basilisk.heartofscales.entity.DragonCommand;
 import net.basilisk.heartofscales.entity.DragonEntity;
+import net.basilisk.heartofscales.species.stats.SwimStats;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -19,12 +20,6 @@ import java.util.Optional;
  */
 public class DragonRoamSwimGoal extends Goal {
     public static final int MIN_DEPTH = 2;
-    private static final int MIN_SWIM_TICKS = 300;
-    private static final int MAX_SWIM_TICKS = 600;
-    private static final int MIN_REST_TICKS = 200;
-    private static final int MAX_REST_TICKS = 400;
-    private static final double MIN_TARGET_DISTANCE = 8.0;
-    private static final double MAX_TARGET_DISTANCE = 16.0;
     private static final float CONE_HALF_ANGLE = 60.0f;
     private static final int TARGET_ATTEMPTS = 8;
     private static final double NEXT_TARGET_DISTANCE_SQR = 4.0 * 4.0;
@@ -70,7 +65,7 @@ public class DragonRoamSwimGoal extends Goal {
     @Override
     public void start() {
         dragon.setSwimMode(true);
-        swimTicksLeft = MIN_SWIM_TICKS + dragon.getRandom().nextInt(MAX_SWIM_TICKS - MIN_SWIM_TICKS);
+        swimTicksLeft = stats().roamMinTicks() + dragon.getRandom().nextInt(Math.max(1, stats().roamMaxTicks() - stats().roamMinTicks()));
         stuckTicks = 0;
         stuckRetargets = 0;
         lastPos = dragon.position();
@@ -81,7 +76,7 @@ public class DragonRoamSwimGoal extends Goal {
     public void stop() {
         dragon.setSwimMode(false);
         target = null;
-        restTicksLeft = MIN_REST_TICKS + dragon.getRandom().nextInt(MAX_REST_TICKS - MIN_REST_TICKS);
+        restTicksLeft = stats().restMinTicks() + dragon.getRandom().nextInt(Math.max(1, stats().restMaxTicks() - stats().restMinTicks()));
     }
 
     @Override
@@ -154,9 +149,13 @@ public class DragonRoamSwimGoal extends Goal {
         return null;
     }
 
+    private SwimStats stats() {
+        return dragon.getStats().swim();
+    }
+
     private Vec3 pointAhead(float halfAngle) {
         float yaw = dragon.getYRot() + Mth.nextFloat(dragon.getRandom(), -halfAngle, halfAngle);
-        double distance = Mth.nextDouble(dragon.getRandom(), MIN_TARGET_DISTANCE, MAX_TARGET_DISTANCE);
+        double distance = Mth.nextDouble(dragon.getRandom(), stats().roamMinDistance(), stats().roamMaxDistance());
         double radians = Math.toRadians(yaw);
         return dragon.position().add(-Math.sin(radians) * distance, 0, Math.cos(radians) * distance);
     }
