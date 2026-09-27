@@ -21,7 +21,8 @@ Datapack registries load once when a world opens. Edits need the world reopened,
 
 | field | default | meaning |
 |---|---|---|
-| `flies` | `false` | Can take off and be flown. |
+| `flies` | `false` | Can take off from the ground and be flown in free flight. |
+| `glides` | `false` | Has glide mode. With `flies` too, the flight mode key switches between the two. Alone, the dragon cannot take off but opens its wings after a fall. |
 | `swims` | `false` | Roams in water, crawls on land, breathes underwater. |
 | `stats` | all defaults | Tuning numbers, see below. |
 
@@ -67,6 +68,7 @@ turn rates in degrees per tick. A "factor" multiplies something else. A "respons
     },
     "ground": {
       "sprint_speed_factor": 3.0,
+      "walk_sprint_speed_factor": 1.5,
       "ridden_strafe_factor": 0.5,
       "ridden_reverse_factor": 0.25
     },
@@ -116,7 +118,8 @@ turn rates in degrees per tick. A "factor" multiplies something else. A "respons
       "stall_fall_to_speed": 0.25,
       "stall_assist_delay_ticks": 10,
       "free_cam_stall_assist_pitch": 30.0,
-      "free_cam_stall_assist_rate": 4.0
+      "free_cam_stall_assist_rate": 4.0,
+      "auto_deploy_fall": 3.0
     },
     "swim": {
       "accel": 0.06,
@@ -185,6 +188,7 @@ Ridden input handling that applies in every mode.
 | field | meaning |
 |---|---|
 | `sprint_speed_factor` | Speed multiplier while sprinting in free flight or swimming. |
+| `walk_sprint_speed_factor` | Speed multiplier while sprinting on the ground. Only forward (W) sprints. |
 | `ridden_strafe_factor` | Scale on the rider's A and D input. |
 | `ridden_reverse_factor` | Scale on the rider's S input. |
 
@@ -241,6 +245,7 @@ factors multiply the ridden cruise speed.
 | `stall_assist_delay_ticks` | Stalled this long, the rider's look starts easing down into a dive. |
 | `free_cam_stall_assist_pitch` | In free cam, the assist tips the body to this pitch. |
 | `free_cam_stall_assist_rate` | How fast it tips. |
+| `auto_deploy_fall` | Blocks a ridden dragon that glides but cannot fly must fall before its wings open. |
 
 ### swim
 

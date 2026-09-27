@@ -93,6 +93,7 @@ import software.bernie.geckolib.core.animation.AnimationController;
 import software.bernie.geckolib.core.animation.RawAnimation;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
+import java.util.List;
 import java.util.Random;
 import java.util.Set;
 
@@ -206,10 +207,26 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         return FlightMode.byOrdinal(entityData.get(DATA_FLIGHT_MODE));
     }
 
+    /** The modes this species offers, in the order the toggle key cycles them. */
+    public List<FlightMode> availableFlightModes() {
+        return FlightMode.available(species.flies(), species.glides());
+    }
+
+    /** The mode a landing resets to, and the one a stored mode falls back to when the species no longer offers it. */
+    private FlightMode defaultFlightMode() {
+        return availableFlightModes().get(0);
+    }
+
+    private void setFlightMode(FlightMode mode) {
+        entityData.set(DATA_FLIGHT_MODE, (byte) mode.ordinal());
+    }
+
+    /** Cycles to the next mode the species offers. With a single mode there is nothing to switch to, so nothing happens. */
     public void toggleFlightMode(Player rider) {
         if (isInSwimMode()) return;
-        FlightMode mode = getFlightMode().next();
-        entityData.set(DATA_FLIGHT_MODE, (byte) mode.ordinal());
+        FlightMode mode = getFlightMode().next(availableFlightModes());
+        if (mode == getFlightMode()) return;
+        setFlightMode(mode);
         rider.displayClientMessage(Component.translatable("flight_mode.heart_of_scales." + mode.id()), true);
     }
 
@@ -247,14 +264,15 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     }
 
     /**
-     * Whether the sprint is actually happening this tick: key held, stamina to spend, and in free flight some
-     * movement to boost, so hovering with the key held costs nothing. The same answer on the server, which spends
-     * the stamina, and on the rider's client, which applies the speed.
+     * Whether the sprint is actually happening this tick: key held, stamina to spend, and some movement to boost, so
+     * hovering or standing with the key held costs nothing. On the ground only forward counts, as for a player. The
+     * same answer on the server, which spends the stamina, and on the rider's client, which applies the speed.
      */
     public boolean isSprinting() {
-        if (!riderSprinting || !isInFluidMode() || isExhausted() || entityData.get(DATA_STAMINA) <= 0.0f) return false;
+        if (!riderSprinting || isExhausted() || entityData.get(DATA_STAMINA) <= 0.0f) return false;
         if (!(getControllingPassenger() instanceof Player rider)) return false;
-        if (getFlightMode() == FlightMode.GLIDE) return true;
+        if (!isInFluidMode()) return rider.zza > 0.0f;
+        if (isFlying() && getFlightMode() == FlightMode.GLIDE) return true;
         return rider.xxa != 0.0f || rider.zza != 0.0f || riderAscending || riderDescending;
     }
 
@@ -307,9 +325,14 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
                 buf -> buf.writeInt(getId()));
     }
 
-    /** Whether this dragon's species can fly at all. */
+    /** Whether this dragon's species can take off from the ground. */
     public boolean canFly() {
         return species.flies();
+    }
+
+    /** Whether this dragon's species has glide mode. Without {@link #canFly()} the only way into the air is a fall. */
+    public boolean canGlide() {
+        return species.glides();
     }
 
     /** Whether this dragon's species swims. Water-bound species crawl on land and roam in water. */
@@ -326,8 +349,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         if (flying == isFlying()) return;
         if (flying && isInSwimMode()) return;
         entityData.set(DATA_FLYING, flying);
-        // Every landing, ridden or not, puts the dragon back in free flight for the next take-off
-        if (!flying) entityData.set(DATA_FLIGHT_MODE, (byte) FlightMode.FREE.ordinal());
+        // Every landing, ridden or not, puts the dragon back in its first mode for the next take-off
+        if (!flying) setFlightMode(defaultFlightMode());
         navigation.stop();
         moveControl = flying ? airMoveControl : groundMoveControl;
         navigation = flying ? airNavigation : groundNavigation;
@@ -461,7 +484,9 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         home = readHome(tag);
         setFlying(tag.getBoolean(TAG_FLYING));
         setSwimMode(tag.getBoolean(TAG_SWIM_MODE));
-        entityData.set(DATA_FLIGHT_MODE, (byte) FlightMode.byId(tag.getString(TAG_FLIGHT_MODE)).ordinal());
+        // The species may have lost a mode since the save was written; an unavailable mode falls back to the first
+        FlightMode storedMode = FlightMode.byId(tag.getString(TAG_FLIGHT_MODE));
+        setFlightMode(availableFlightModes().contains(storedMode) ? storedMode : defaultFlightMode());
         inventory.setItem(SADDLE_SLOT, tag.contains(TAG_SADDLE, Tag.TAG_COMPOUND)
                 ? ItemStack.of(tag.getCompound(TAG_SADDLE)) : ItemStack.EMPTY);
 
@@ -710,7 +735,11 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         RiddenSwimming.tickMode(this);
         if (isInSwimMode()) return;
         if (!isFlying()) {
-            if (riderAscending && onGround() && canFly()) {
+            boolean takeOff = riderAscending && onGround() && canFly();
+            // A glider that cannot take off opens its wings once a fall is long enough not to be a hop off a step
+            boolean deploy = !canFly() && canGlide() && !onGround() && !isInWater()
+                    && fallDistance > getStats().glide().autoDeployFall();
+            if (takeOff || deploy) {
                 setFlying(true);
                 riddenFlightTicks = 0;
             }
@@ -916,9 +945,11 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         return new Vec3(strafe, 0.0, forward);
     }
 
+    /** Only the ground reaches this; flight and ridden swimming have their own travel. */
     @Override
     protected float getRiddenSpeed(Player rider) {
-        return (float) getAttributeValue(Attributes.MOVEMENT_SPEED);
+        float speed = (float) getAttributeValue(Attributes.MOVEMENT_SPEED);
+        return isSprinting() ? speed * (float) getStats().ground().walkSprintSpeedFactor() : speed;
     }
 
     @Override

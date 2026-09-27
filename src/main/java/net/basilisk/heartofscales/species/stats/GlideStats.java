@@ -42,10 +42,13 @@ public record GlideStats(Speed speed, Stall stall) {
         ).apply(instance, Speed::new));
     }
 
-    /** Below stall speed the wings stop carrying the dragon; these govern the fall and the recovery from it. */
+    /**
+     * Below stall speed the wings stop carrying the dragon; these govern the fall and the recovery from it. Also the
+     * fall that opens the wings of a species that glides but cannot take off.
+     */
     public record Stall(double fallAccel, double fallMax, double fallRecovery, float pitchRate, double fallToSpeed,
-                        int assistDelayTicks, float freeCamAssistPitch, float freeCamAssistRate) {
-        public static final Stall DEFAULT = new Stall(0.015, 0.6, 0.8, 9.0f, 0.25, 10, 30.0f, 4.0f);
+                        int assistDelayTicks, float freeCamAssistPitch, float freeCamAssistRate, float autoDeployFall) {
+        public static final Stall DEFAULT = new Stall(0.015, 0.6, 0.8, 9.0f, 0.25, 10, 30.0f, 4.0f, 3.0f);
 
         static final MapCodec<Stall> CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
                 Codec.DOUBLE.optionalFieldOf("stall_fall_accel", DEFAULT.fallAccel()).forGetter(Stall::fallAccel),
@@ -55,7 +58,8 @@ public record GlideStats(Speed speed, Stall stall) {
                 Codec.DOUBLE.optionalFieldOf("stall_fall_to_speed", DEFAULT.fallToSpeed()).forGetter(Stall::fallToSpeed),
                 Codec.INT.optionalFieldOf("stall_assist_delay_ticks", DEFAULT.assistDelayTicks()).forGetter(Stall::assistDelayTicks),
                 Codec.FLOAT.optionalFieldOf("free_cam_stall_assist_pitch", DEFAULT.freeCamAssistPitch()).forGetter(Stall::freeCamAssistPitch),
-                Codec.FLOAT.optionalFieldOf("free_cam_stall_assist_rate", DEFAULT.freeCamAssistRate()).forGetter(Stall::freeCamAssistRate)
+                Codec.FLOAT.optionalFieldOf("free_cam_stall_assist_rate", DEFAULT.freeCamAssistRate()).forGetter(Stall::freeCamAssistRate),
+                Codec.FLOAT.optionalFieldOf("auto_deploy_fall", DEFAULT.autoDeployFall()).forGetter(Stall::autoDeployFall)
         ).apply(instance, Stall::new));
     }
 
@@ -81,4 +85,5 @@ public record GlideStats(Speed speed, Stall stall) {
     public int stallAssistDelayTicks() { return stall.assistDelayTicks(); }
     public float freeCamStallAssistPitch() { return stall.freeCamAssistPitch(); }
     public float freeCamStallAssistRate() { return stall.freeCamAssistRate(); }
+    public float autoDeployFall() { return stall.autoDeployFall(); }
 }

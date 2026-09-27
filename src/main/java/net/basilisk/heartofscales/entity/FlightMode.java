@@ -1,5 +1,7 @@
 package net.basilisk.heartofscales.entity;
 
+import java.util.List;
+
 /** How a ridden dragon answers the rider's look direction. Toggled by the rider with a key. */
 public enum FlightMode {
     /** Goes exactly where the rider looks. */
@@ -17,8 +19,20 @@ public enum FlightMode {
         return id;
     }
 
-    public FlightMode next() {
-        return this == FREE ? GLIDE : FREE;
+    /**
+     * The modes a species offers, in toggle order. A species with neither still gets free flight so the synced mode
+     * always names something, even though such a dragon never leaves the ground.
+     */
+    public static List<FlightMode> available(boolean flies, boolean glides) {
+        if (flies && glides) return List.of(FREE, GLIDE);
+        if (glides) return List.of(GLIDE);
+        return List.of(FREE);
+    }
+
+    /** The mode after this one in the list, wrapping around. A mode not in the list resolves to the first. */
+    public FlightMode next(List<FlightMode> available) {
+        int index = available.indexOf(this);
+        return available.get(index < 0 ? 0 : (index + 1) % available.size());
     }
 
     public static FlightMode byId(String id) {

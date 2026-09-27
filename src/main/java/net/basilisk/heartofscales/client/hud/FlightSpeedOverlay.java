@@ -10,8 +10,9 @@ import net.minecraftforge.client.gui.overlay.IGuiOverlay;
 import java.util.Locale;
 
 /**
- * Speed readout beside the hotbar while the player is flying a dragon, red when a glide is stalling, with the
- * dragon's sprint stamina as a bar beneath it, red while it is locked out after running dry.
+ * Speed readout beside the hotbar while the player is flying or swimming a dragon, red when a glide is stalling, with
+ * the dragon's sprint stamina as a bar beneath it, red while it is locked out after running dry. On the ground only
+ * the bar shows, in the same place so it does not jump on take-off.
  */
 public final class FlightSpeedOverlay implements IGuiOverlay {
     public static final String ID = "flight_speed";
@@ -29,19 +30,21 @@ public final class FlightSpeedOverlay implements IGuiOverlay {
     public void render(ForgeGui gui, GuiGraphics graphics, float partialTick, int screenWidth, int screenHeight) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.options.hideGui) return;
-        if (!(mc.player.getVehicle() instanceof DragonEntity dragon) || !dragon.isInFluidMode()) return;
+        if (!(mc.player.getVehicle() instanceof DragonEntity dragon)) return;
         if (dragon.getControllingPassenger() != mc.player) return;
 
-        // Distance covered in the last tick, so it reads the same in free flight and glide
-        double dx = dragon.getX() - dragon.xo;
-        double dy = dragon.getY() - dragon.yo;
-        double dz = dragon.getZ() - dragon.zo;
-        double blocksPerSecond = Math.sqrt(dx * dx + dy * dy + dz * dz) * TICKS_PER_SECOND;
-
-        Component label = Component.translatable("hud.heart_of_scales.speed", String.format(Locale.ROOT, "%.1f", blocksPerSecond));
         int x = screenWidth / 2 + HOTBAR_HALF_WIDTH + 8;
         int y = screenHeight - 14;
-        graphics.drawString(mc.font, label, x, y, dragon.isGlideStalling() ? COLOUR_STALLING : COLOUR_NORMAL);
+        if (dragon.isInFluidMode()) {
+            // Distance covered in the last tick, so it reads the same in free flight and glide
+            double dx = dragon.getX() - dragon.xo;
+            double dy = dragon.getY() - dragon.yo;
+            double dz = dragon.getZ() - dragon.zo;
+            double blocksPerSecond = Math.sqrt(dx * dx + dy * dy + dz * dz) * TICKS_PER_SECOND;
+
+            Component label = Component.translatable("hud.heart_of_scales.speed", String.format(Locale.ROOT, "%.1f", blocksPerSecond));
+            graphics.drawString(mc.font, label, x, y, dragon.isGlideStalling() ? COLOUR_STALLING : COLOUR_NORMAL);
+        }
 
         int barY = y + mc.font.lineHeight + 1;
         int filled = Math.round(STAMINA_BAR_WIDTH * dragon.getStaminaFraction());
