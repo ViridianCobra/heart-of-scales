@@ -29,6 +29,11 @@ public enum FlightMode {
         return List.of(FREE);
     }
 
+    /** The current mode if the species offers it, otherwise the species' first mode. */
+    public static FlightMode resolve(FlightMode current, List<FlightMode> available) {
+        return available.contains(current) ? current : available.get(0);
+    }
+
     /** The mode after this one in the list, wrapping around. A mode not in the list resolves to the first. */
     public FlightMode next(List<FlightMode> available) {
         int index = available.indexOf(this);

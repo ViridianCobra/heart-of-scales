@@ -401,6 +401,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         this.genomeAssigned = true;
         entityData.set(DATA_SUBSPECIES, genome.subspecies());
         resolveSpecies();
+        // The synced mode starts as free flight, which a glide-only species does not offer
+        setFlightMode(FlightMode.resolve(getFlightMode(), availableFlightModes()));
         applyAttributes();
     }
 
@@ -486,7 +488,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         setSwimMode(tag.getBoolean(TAG_SWIM_MODE));
         // The species may have lost a mode since the save was written; an unavailable mode falls back to the first
         FlightMode storedMode = FlightMode.byId(tag.getString(TAG_FLIGHT_MODE));
-        setFlightMode(availableFlightModes().contains(storedMode) ? storedMode : defaultFlightMode());
+        setFlightMode(FlightMode.resolve(storedMode, availableFlightModes()));
         inventory.setItem(SADDLE_SLOT, tag.contains(TAG_SADDLE, Tag.TAG_COMPOUND)
                 ? ItemStack.of(tag.getCompound(TAG_SADDLE)) : ItemStack.EMPTY);
 
