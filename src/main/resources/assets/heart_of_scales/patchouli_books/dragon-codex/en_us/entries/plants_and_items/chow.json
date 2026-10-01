@@ -1,0 +1,27 @@
+{
+  "name": "Dragon Chow",
+  "category": "heart_of_scales:plants_and_items",
+  "icon": "heart_of_scales:forest-chow",
+  "sortnum": 5,
+  "pages": [
+    {
+      "type": "patchouli:text",
+      "text": "Every subspecies has a favourite meal: a bowl of chow seasoned with $(l:plants_and_items/dracip)dracip petals$().$(br2)A wild dragon fed its own chow warms to you far faster than with ordinary food"
+    },
+    {
+      "type": "patchouli:crafting",
+      "recipe": "heart_of_scales:cave-chow",
+      "recipe2": "heart_of_scales:forest-chow"
+    },
+    {
+      "type": "patchouli:crafting",
+      "recipe": "heart_of_scales:mountain-chow",
+      "recipe2": "heart_of_scales:plains-chow"
+    },
+    {
+      "type": "patchouli:crafting",
+      "recipe": "heart_of_scales:ocean-chow",
+      "recipe2": "heart_of_scales:river-chow"
+    }
+  ]
+}

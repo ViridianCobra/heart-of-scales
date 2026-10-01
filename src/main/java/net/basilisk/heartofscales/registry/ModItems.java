@@ -1,6 +1,7 @@
 package net.basilisk.heartofscales.registry;
 
 import net.basilisk.heartofscales.HeartOfScales;
+import net.basilisk.heartofscales.item.ChowItem;
 import net.basilisk.heartofscales.item.DragonEggItem;
 import net.basilisk.heartofscales.item.DragonStaffItem;
 import net.minecraft.world.item.BlockItem;
@@ -47,6 +48,13 @@ public final class ModItems {
 
     public static final RegistryObject<Item> DRAGON_SADDLE = ITEMS.register("dragon-saddle",
             () -> new Item(new Item.Properties().stacksTo(1)));
+
+    public static final RegistryObject<Item> CAVE_CHOW = ITEMS.register("cave-chow", () -> new ChowItem(new Item.Properties()));
+    public static final RegistryObject<Item> FOREST_CHOW = ITEMS.register("forest-chow", () -> new ChowItem(new Item.Properties()));
+    public static final RegistryObject<Item> MOUNTAIN_CHOW = ITEMS.register("mountain-chow", () -> new ChowItem(new Item.Properties()));
+    public static final RegistryObject<Item> OCEAN_CHOW = ITEMS.register("ocean-chow", () -> new ChowItem(new Item.Properties()));
+    public static final RegistryObject<Item> PLAINS_CHOW = ITEMS.register("plains-chow", () -> new ChowItem(new Item.Properties()));
+    public static final RegistryObject<Item> RIVER_CHOW = ITEMS.register("river-chow", () -> new ChowItem(new Item.Properties()));
 
     private ModItems() {}
 }

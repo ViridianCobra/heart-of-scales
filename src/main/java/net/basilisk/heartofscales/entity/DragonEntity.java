@@ -11,6 +11,7 @@ import net.basilisk.heartofscales.entity.ai.ReturnToWaterGoal;
 import net.basilisk.heartofscales.entity.ai.TemptWithFoodGoal;
 import net.basilisk.heartofscales.genome.DragonGenome;
 import net.basilisk.heartofscales.genome.Inheritance;
+import net.basilisk.heartofscales.item.ChowItem;
 import net.basilisk.heartofscales.item.DragonStaffItem;
 import net.basilisk.heartofscales.menu.DragonMenu;
 import net.basilisk.heartofscales.registry.ModItems;
@@ -1112,7 +1113,10 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
 
             TamingStats taming = getStats().taming();
             boolean favourite = species.isFavouriteFood(stack);
+            // Read before eating: the stack is empty once the last chow is used
+            boolean chow = stack.getItem() instanceof ChowItem;
             usePlayerItem(player, hand, stack);
+            if (chow) ChowItem.returnBowl(player, hand);
             tameProgress = Math.min(taming.threshold(), tameProgress + (favourite ? taming.favouriteFoodPoints() : taming.foodPoints()));
             if (tameProgress >= taming.threshold() && !ForgeEventFactory.onAnimalTame(this, player)) {
                 tame(player);
