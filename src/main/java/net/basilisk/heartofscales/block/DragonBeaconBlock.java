@@ -1,10 +1,22 @@
 package net.basilisk.heartofscales.block;
 
+import net.basilisk.heartofscales.menu.DragonBeaconMenu;
+import net.basilisk.heartofscales.registry.ModItems;
+import net.basilisk.heartofscales.roster.BeaconLang;
+import net.basilisk.heartofscales.roster.BeaconRow;
+import net.basilisk.heartofscales.roster.BeaconRows;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.ContainerLevelAccess;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -16,9 +28,13 @@ import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraftforge.network.NetworkHooks;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 /**
  * Two blocks tall, built like a door: a lower and an upper half that live and die together.
@@ -56,6 +72,23 @@ public class DragonBeaconBlock extends Block {
         Level level = context.getLevel();
         boolean roomAbove = pos.getY() < level.getMaxBuildHeight() - 1 && level.getBlockState(pos.above()).canBeReplaced(context);
         return roomAbove ? defaultBlockState() : null;
+    }
+
+    /** Opens the list of dragons that live here. */
+    @Override
+    public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
+        // Blocks get the click before held items, so step aside and let the staff assign homes
+        if (player.isHolding(ModItems.DRAGON_STAFF.get())) return InteractionResult.PASS;
+        if (player instanceof ServerPlayer serverPlayer) {
+            BlockPos lower = lowerPos(state, pos);
+            List<BeaconRow> rows = BeaconRows.build(serverPlayer, GlobalPos.of(level.dimension(), lower));
+            NetworkHooks.openScreen(serverPlayer,
+                    new SimpleMenuProvider((windowId, inventory, p) ->
+                            new DragonBeaconMenu(windowId, ContainerLevelAccess.create(level, lower), rows),
+                            Component.translatable(BeaconLang.TITLE)),
+                    buf -> BeaconRow.writeList(buf, rows));
+        }
+        return InteractionResult.sidedSuccess(level.isClientSide);
     }
 
     @Override
