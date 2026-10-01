@@ -3,7 +3,7 @@
   "swims": true,
   "egg_tint": "#5FB7C9",
   "foods": "heart_of_scales:dragon-food/water",
-  "favourite_food": "minecraft:cooked_salmon",
+  "favourite_food": "heart_of_scales:river-chow",
   "hatch_condition": "waterlogged",
   "stats": {
     "swim": {

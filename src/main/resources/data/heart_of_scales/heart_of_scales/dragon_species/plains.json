@@ -4,7 +4,7 @@
   "glides": true,
   "egg_tint": "#9BA98E",
   "foods": "heart_of_scales:dragon-food/air",
-  "favourite_food": "minecraft:cooked_rabbit",
+  "favourite_food": "heart_of_scales:plains-chow",
   "hatch_condition": "open_air",
   "stats": {
     "flight": {

@@ -10,6 +10,7 @@ When a version is released, drop "(Unreleased)" from its heading and start the n
 - Dragons remember when they were tamed. Dragons tamed before this show "Tamed: unknown".
 - Fixed the nest and egg being drawn full block size in the inventory, in hand and on the ground, and the dropped nest sinking into the ground.
 - Fixed hatching messages showing their translation key instead of text.
+- Dragon chow, one per subspecies, crafted from a bowl, dracip petals and two ingredients. Each subspecies' chow is now its favourite food, and feeding it gives the bowl back. The old cooked favourites are still ordinary dragon food. The Codex has a Dragon Chow page with the recipes.
 
 ## 0.0.1
 - Dragon egg block and item carrying a subspecies, tinted per species.

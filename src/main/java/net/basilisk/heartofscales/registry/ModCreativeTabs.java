@@ -26,6 +26,12 @@ public final class ModCreativeTabs {
                         output.accept(ModItems.DRACIP_PETALS.get());
                         output.accept(ModItems.DRAGON_SCALE.get());
                         output.accept(ModItems.AMORBERRY.get());
+                        output.accept(ModItems.CAVE_CHOW.get());
+                        output.accept(ModItems.FOREST_CHOW.get());
+                        output.accept(ModItems.MOUNTAIN_CHOW.get());
+                        output.accept(ModItems.OCEAN_CHOW.get());
+                        output.accept(ModItems.PLAINS_CHOW.get());
+                        output.accept(ModItems.RIVER_CHOW.get());
                         output.accept(ModItems.MUTATION_MUSHROOM.get());
                         output.accept(ModItems.DRAGON_SPAWN_EGG.get());
                         output.accept(ModItems.DRAGON_BEACON.get());
