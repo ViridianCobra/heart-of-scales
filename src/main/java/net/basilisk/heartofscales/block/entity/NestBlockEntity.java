@@ -120,10 +120,7 @@ public class NestBlockEntity extends BlockEntity {
         baby.setBaby(true);
         baby.moveTo(worldPosition.getX() + 0.5, worldPosition.getY() + 0.2, worldPosition.getZ() + 0.5,
                 serverLevel.random.nextFloat() * 360.0f, 0.0f);
-        if (hatcher != null) {
-            baby.setTame(true);
-            baby.setOwnerUUID(hatcher);
-        }
+        if (hatcher != null) baby.tameBy(hatcher);
         serverLevel.addFreshEntity(baby);
 
         serverLevel.playSound(null, worldPosition, SoundEvents.TURTLE_EGG_HATCH, SoundSource.BLOCKS, 1.0f, 0.8f);

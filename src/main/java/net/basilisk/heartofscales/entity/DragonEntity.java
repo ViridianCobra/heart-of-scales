@@ -15,6 +15,7 @@ import net.basilisk.heartofscales.item.DragonStaffItem;
 import net.basilisk.heartofscales.menu.DragonMenu;
 import net.basilisk.heartofscales.registry.ModItems;
 import net.basilisk.heartofscales.nbt.GenomeNbt;
+import net.basilisk.heartofscales.roster.DragonRoster;
 import net.basilisk.heartofscales.species.DragonSpecies;
 import net.basilisk.heartofscales.species.ModRegistries;
 import net.basilisk.heartofscales.species.SpeciesGroup;
@@ -96,12 +97,15 @@ import software.bernie.geckolib.util.GeckoLibUtil;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
+import java.util.UUID;
 
 public class DragonEntity extends TamableAnimal implements GeoEntity {
     private static final EntityDataAccessor<String> DATA_SUBSPECIES =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.STRING);
     private static final String TAG_GENOME = "Genome";
     private static final String TAG_TAME_PROGRESS = "TameProgress";
+    private static final String TAG_TAMED_AT = "TamedAt";
+    private static final int ROSTER_UPDATE_INTERVAL = 100;
     private static final EntityDataAccessor<Byte> DATA_COMMAND =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BYTE);
     private static final String TAG_BEACON = "Beacon";
@@ -140,6 +144,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     // Resolved from the genome's subspecies id; never null, so stats can be read before the first sync arrives
     private DragonSpecies species = DragonSpecies.DEFAULT;
     private int tameProgress;
+    private long tamedAt;
     @Nullable
     private GlobalPos home;
     // Ground and air movement each keep their own controller and navigator; setFlying swaps between them
@@ -464,6 +469,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         super.addAdditionalSaveData(tag);
         tag.put(TAG_GENOME, GenomeNbt.save(genome, new CompoundTag()));
         tag.putInt(TAG_TAME_PROGRESS, tameProgress);
+        tag.putLong(TAG_TAMED_AT, tamedAt);
         tag.putString(TAG_COMMAND, getCommand().id());
         tag.putBoolean(TAG_FLYING, isFlying());
         tag.putBoolean(TAG_SWIM_MODE, isInSwimMode());
@@ -483,6 +489,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             setGenome(GenomeNbt.load(tag.getCompound(TAG_GENOME)));
         }
         tameProgress = tag.getInt(TAG_TAME_PROGRESS);
+        tamedAt = tag.getLong(TAG_TAMED_AT);
         home = readHome(tag);
         setFlying(tag.getBoolean(TAG_FLYING));
         setSwimMode(tag.getBoolean(TAG_SWIM_MODE));
@@ -566,6 +573,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         jumping = false;
         navigation.stop();
         if (isWalkingHome()) DragonHomecoming.track(this);
+        updateRoster();
         return true;
     }
 
@@ -587,11 +595,13 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     public void setHome(GlobalPos home) {
         this.home = GlobalPos.of(home.dimension(), home.pos().immutable());
         setCommand(DragonCommand.WANDER);
+        updateRoster();
     }
 
     public void clearHome() {
         this.home = null;
         if (getCommand() == DragonCommand.WANDER) setCommand(DragonCommand.FOLLOW);
+        updateRoster();
     }
 
     private boolean isHomeBound() {
@@ -631,6 +641,21 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         super.onAddedToWorld();
         // A dragon loaded into an area that is not ticking never gets to run its own check
         if (!level().isClientSide && isWalkingHome()) DragonHomecoming.track(this);
+        updateRoster();
+    }
+
+    // Entity.setRemoved is final and chunk unloads call it directly, so this Forge hook is the one place to see a dragon leave
+    @Override
+    public void onRemovedFromWorld() {
+        super.onRemovedFromWorld();
+        if (!isRosterTracked() || !(level() instanceof ServerLevel serverLevel)) return;
+        RemovalReason reason = getRemovalReason();
+        // No reason yet means its area stopped being tracked ahead of unloading
+        if (reason == null || reason == RemovalReason.UNLOADED_TO_CHUNK || reason == RemovalReason.UNLOADED_WITH_PLAYER) {
+            DragonRoster.get(serverLevel.getServer()).update(this);
+        } else if (reason == RemovalReason.DISCARDED) {
+            DragonRoster.get(serverLevel.getServer()).markRemoved(this);
+        }
     }
 
     @Override
@@ -652,7 +677,12 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
 
     @Override
     public boolean isWithinRestriction(BlockPos pos) {
-        if (!isHomeBound()) return super.isWithinRestriction(pos);
+        return isHomeBound() ? isInsideHomeArea(pos) : super.isWithinRestriction(pos);
+    }
+
+    /** Inside the box around its home beacon, whatever it has been told to do. False with no home here. */
+    public boolean isInsideHomeArea(BlockPos pos) {
+        if (!isHomeInThisDimension()) return false;
         BlockPos beacon = home.pos();
         HomeStats range = getStats().home();
         return Math.abs(pos.getX() - beacon.getX()) <= range.rangeHorizontal()
@@ -676,6 +706,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             groundNavigation.setCanFloat(true);
             swimNavigationConfigured = true;
         }
+        if (tickCount % ROSTER_UPDATE_INTERVAL == 0) updateRoster();
         if (home == null || tickCount % getStats().home().checkIntervalTicks() != 0) return;
         if (isWalkingHome()) DragonHomecoming.track(this);
         if (isHomeInThisDimension() && level().isLoaded(home.pos())) {
@@ -1001,8 +1032,18 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     @Override
     protected void dropEquipment() {
         super.dropEquipment();
-        ItemStack saddle = inventory.getItem(SADDLE_SLOT);
+        ItemStack saddle = inventory.removeItemNoUpdate(SADDLE_SLOT);
         if (!saddle.isEmpty()) spawnAtLocation(saddle);
+    }
+
+    @Override
+    public void die(DamageSource source) {
+        // super.die clears the combat log, so read the message first (vanilla TamableAnimal does the same)
+        Component deathMessage = getCombatTracker().getDeathMessage();
+        super.die(source);
+        if (dead && isTame() && getOwnerUUID() != null && level() instanceof ServerLevel serverLevel) {
+            DragonRoster.get(serverLevel.getServer()).markDied(this, deathMessage);
+        }
     }
 
     /** Dragons never take fall damage, flying species or not. */
@@ -1025,6 +1066,40 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     @Override
     protected Component getTypeName() {
         return Component.translatable("subspecies." + getSubspecies().replace(':', '.'));
+    }
+
+    @Override
+    public void tame(Player player) {
+        super.tame(player);
+        markTamed();
+    }
+
+    /** Tames to an owner who may not be online, as when an egg hatches. */
+    public void tameBy(UUID owner) {
+        setTame(true);
+        setOwnerUUID(owner);
+        markTamed();
+    }
+
+    /** Real-world time this dragon was tamed, in epoch milliseconds, or 0 if it was tamed before this was recorded. */
+    public long getTamedAt() {
+        return tamedAt;
+    }
+
+    private void markTamed() {
+        tamedAt = System.currentTimeMillis();
+        updateRoster();
+    }
+
+    /** Living tamed dragons keep their roster entry current; death writes its own entry once. */
+    private boolean isRosterTracked() {
+        return isTame() && getOwnerUUID() != null && !isDeadOrDying();
+    }
+
+    private void updateRoster() {
+        if (isRosterTracked() && level() instanceof ServerLevel serverLevel) {
+            DragonRoster.get(serverLevel.getServer()).update(this);
+        }
     }
 
     @Override

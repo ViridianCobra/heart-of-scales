@@ -51,6 +51,13 @@ This is the largest change.
 - Colour handler events keep their shape under `net.neoforged.neoforge.client.event`.
 - Curios 9: `CuriosApi.getCuriosInventory` returns a plain `Optional`.
 
+## Dragon beacon roster
+- `DragonBeaconBlock.use` moves to `useWithoutItem`. Add `useItemOn` returning `SKIP_DEFAULT_BLOCK_INTERACTION` while holding the staff, so the staff's `useOn` still assigns homes.
+- `DragonRoster`: `computeIfAbsent` takes a `SavedData.Factory`, and `load`/`save` take a `HolderLookup.Provider`. `Component.Serializer.toJson`/`fromJson` in `RosterEntry` need that provider too.
+- `NetworkHooks.openScreen` becomes `player.openMenu(provider, buf -> ...)`, `IForgeMenuType` becomes `IMenuTypeExtension`, and `BeaconRow` encodes components with `ComponentSerialization.TRUSTED_STREAM_CODEC` on a `RegistryFriendlyByteBuf`.
+- `DragonBeaconScreen`'s list: `AbstractSelectionList` takes `(minecraft, width, height, y, itemHeight)` from 1.20.2, and its background and selection flags changed; check `RowList` against the 1.21.1 class.
+- `Entity.onRemovedFromWorld` and `getRemovalReason` keep their names on NeoForge.
+
 ## Data folder names
 - `loot_tables` to `loot_table`, `recipes` to `recipe`, `tags/items` to `tags/item`, `tags/blocks` to `tags/block`.
 - `structures` to `structure` (template NBT files). Worldgen JSON for structures is unchanged.

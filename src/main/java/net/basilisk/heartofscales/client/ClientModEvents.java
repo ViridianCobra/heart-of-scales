@@ -10,6 +10,7 @@ import net.basilisk.heartofscales.registry.ModBlocks;
 import net.basilisk.heartofscales.registry.ModEntities;
 import net.basilisk.heartofscales.registry.ModItems;
 import net.basilisk.heartofscales.client.entity.DragonRenderer;
+import net.basilisk.heartofscales.client.screen.DragonBeaconScreen;
 import net.basilisk.heartofscales.client.screen.DragonScreen;
 import net.basilisk.heartofscales.registry.ModMenuTypes;
 import net.minecraft.client.gui.screens.MenuScreens;
@@ -57,7 +58,10 @@ public final class ClientModEvents {
 
     @SubscribeEvent
     public static void clientSetup(FMLClientSetupEvent event) {
-        event.enqueueWork(() -> MenuScreens.register(ModMenuTypes.DRAGON.get(), DragonScreen::new));
+        event.enqueueWork(() -> {
+            MenuScreens.register(ModMenuTypes.DRAGON.get(), DragonScreen::new);
+            MenuScreens.register(ModMenuTypes.DRAGON_BEACON.get(), DragonBeaconScreen::new);
+        });
     }
 
     @SubscribeEvent
