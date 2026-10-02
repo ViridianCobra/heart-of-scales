@@ -47,21 +47,25 @@ public record FlightStats(Rider rider, Ai ai) {
         ).apply(instance, Rider::new));
     }
 
-    /** How the flight move control turns and how the roam goal picks its flights. */
-    public record Ai(float maxYawTurn, float maxPitchTurn, int roamTakeoffChance, int roamMinTicks, int roamMaxTicks,
-                     double roamMinDistance, double roamMaxDistance, int roamMinHeight, int roamMaxHeight) {
-        public static final Ai DEFAULT = new Ai(3.0f, 10.0f, 600, 300, 600, 8.0, 16.0, 3, 12);
+    /** How the flight move control turns and how idle flights circle their centre. */
+    public record Ai(double speedFactor, float maxYawTurn, float maxPitchTurn, int roamTakeoffChance, double circleMinRadius,
+                     double circleMaxRadius, double ownerCircleMinRadius, double ownerCircleMaxRadius, int circleMinHeight,
+                     int circleMaxHeight, int circleMinLaps, int circleMaxLaps) {
+        public static final Ai DEFAULT = new Ai(0.5, 3.0f, 10.0f, 600, 16.0, 32.0, 10.0, 16.0, 8, 20, 1, 3);
 
         static final MapCodec<Ai> CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+                Codec.DOUBLE.optionalFieldOf("ai_speed_factor", DEFAULT.speedFactor()).forGetter(Ai::speedFactor),
                 Codec.FLOAT.optionalFieldOf("ai_max_yaw_turn", DEFAULT.maxYawTurn()).forGetter(Ai::maxYawTurn),
                 Codec.FLOAT.optionalFieldOf("ai_max_pitch_turn", DEFAULT.maxPitchTurn()).forGetter(Ai::maxPitchTurn),
                 Codec.INT.optionalFieldOf("roam_takeoff_chance", DEFAULT.roamTakeoffChance()).forGetter(Ai::roamTakeoffChance),
-                Codec.INT.optionalFieldOf("roam_min_ticks", DEFAULT.roamMinTicks()).forGetter(Ai::roamMinTicks),
-                Codec.INT.optionalFieldOf("roam_max_ticks", DEFAULT.roamMaxTicks()).forGetter(Ai::roamMaxTicks),
-                Codec.DOUBLE.optionalFieldOf("roam_min_distance", DEFAULT.roamMinDistance()).forGetter(Ai::roamMinDistance),
-                Codec.DOUBLE.optionalFieldOf("roam_max_distance", DEFAULT.roamMaxDistance()).forGetter(Ai::roamMaxDistance),
-                Codec.INT.optionalFieldOf("roam_min_height", DEFAULT.roamMinHeight()).forGetter(Ai::roamMinHeight),
-                Codec.INT.optionalFieldOf("roam_max_height", DEFAULT.roamMaxHeight()).forGetter(Ai::roamMaxHeight)
+                Codec.DOUBLE.optionalFieldOf("circle_min_radius", DEFAULT.circleMinRadius()).forGetter(Ai::circleMinRadius),
+                Codec.DOUBLE.optionalFieldOf("circle_max_radius", DEFAULT.circleMaxRadius()).forGetter(Ai::circleMaxRadius),
+                Codec.DOUBLE.optionalFieldOf("owner_circle_min_radius", DEFAULT.ownerCircleMinRadius()).forGetter(Ai::ownerCircleMinRadius),
+                Codec.DOUBLE.optionalFieldOf("owner_circle_max_radius", DEFAULT.ownerCircleMaxRadius()).forGetter(Ai::ownerCircleMaxRadius),
+                Codec.INT.optionalFieldOf("circle_min_height", DEFAULT.circleMinHeight()).forGetter(Ai::circleMinHeight),
+                Codec.INT.optionalFieldOf("circle_max_height", DEFAULT.circleMaxHeight()).forGetter(Ai::circleMaxHeight),
+                Codec.INT.optionalFieldOf("circle_min_laps", DEFAULT.circleMinLaps()).forGetter(Ai::circleMinLaps),
+                Codec.INT.optionalFieldOf("circle_max_laps", DEFAULT.circleMaxLaps()).forGetter(Ai::circleMaxLaps)
         ).apply(instance, Ai::new));
     }
 
@@ -82,13 +86,16 @@ public record FlightStats(Rider rider, Ai ai) {
     public float freeCamLevelRate() { return rider.freeCamLevelRate(); }
     public float freeCamReleaseTurnRate() { return rider.freeCamReleaseTurnRate(); }
     public float freeCamHeadYawLimit() { return rider.freeCamHeadYawLimit(); }
+    public double aiSpeedFactor() { return ai.speedFactor(); }
     public float aiMaxYawTurn() { return ai.maxYawTurn(); }
     public float aiMaxPitchTurn() { return ai.maxPitchTurn(); }
     public int roamTakeoffChance() { return ai.roamTakeoffChance(); }
-    public int roamMinTicks() { return ai.roamMinTicks(); }
-    public int roamMaxTicks() { return ai.roamMaxTicks(); }
-    public double roamMinDistance() { return ai.roamMinDistance(); }
-    public double roamMaxDistance() { return ai.roamMaxDistance(); }
-    public int roamMinHeight() { return ai.roamMinHeight(); }
-    public int roamMaxHeight() { return ai.roamMaxHeight(); }
+    public double circleMinRadius() { return ai.circleMinRadius(); }
+    public double circleMaxRadius() { return ai.circleMaxRadius(); }
+    public double ownerCircleMinRadius() { return ai.ownerCircleMinRadius(); }
+    public double ownerCircleMaxRadius() { return ai.ownerCircleMaxRadius(); }
+    public int circleMinHeight() { return ai.circleMinHeight(); }
+    public int circleMaxHeight() { return ai.circleMaxHeight(); }
+    public int circleMinLaps() { return ai.circleMinLaps(); }
+    public int circleMaxLaps() { return ai.circleMaxLaps(); }
 }

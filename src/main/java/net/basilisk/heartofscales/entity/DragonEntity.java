@@ -2,6 +2,7 @@ package net.basilisk.heartofscales.entity;
 
 import net.basilisk.heartofscales.block.DragonBeaconBlock;
 import net.basilisk.heartofscales.entity.ai.DragonFlightMoveControl;
+import net.basilisk.heartofscales.entity.ai.DragonFollowOwnerGoal;
 import net.basilisk.heartofscales.entity.ai.DragonLookControl;
 import net.basilisk.heartofscales.entity.ai.DragonRoamFlightGoal;
 import net.basilisk.heartofscales.entity.ai.DragonRoamSwimGoal;
@@ -74,7 +75,6 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.control.MoveControl;
 import net.minecraft.world.entity.ai.goal.BreedGoal;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
-import net.minecraft.world.entity.ai.goal.FollowOwnerGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.MoveTowardsRestrictionGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
@@ -111,6 +111,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BYTE);
     private static final String TAG_BEACON = "Beacon";
     private static final String TAG_BEACON_DIMENSION = "BeaconDimension";
+    private static final String TAG_WILD_HOME = "WildHome";
+    private static final String TAG_WILD_HOME_DIMENSION = "WildHomeDimension";
     private static final String TAG_COMMAND = "Command";
     private static final EntityDataAccessor<Boolean> DATA_FLYING =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
@@ -148,6 +150,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private long tamedAt;
     @Nullable
     private GlobalPos home;
+    @Nullable
+    private GlobalPos wildHome;
     // Ground and air movement each keep their own controller and navigator; setFlying swaps between them
     private final MoveControl groundMoveControl;
     private final PathNavigation groundNavigation;
@@ -382,6 +386,11 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         return getAttributeValue(Attributes.FLYING_SPEED) * getStats().flight().riddenSpeedFactor();
     }
 
+    /** AI flight cruise speed in blocks per tick: the flying speed attribute scaled by the species factor. */
+    public double aiFlightSpeed() {
+        return getAttributeValue(Attributes.FLYING_SPEED) * getStats().flight().aiSpeedFactor();
+    }
+
     /** The only place the swim move control, navigation and gravity are switched. Server side. */
     public void setSwimMode(boolean swim) {
         if (swim == isInSwimMode()) return;
@@ -477,10 +486,14 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         tag.putString(TAG_FLIGHT_MODE, getFlightMode().id());
         ItemStack saddle = inventory.getItem(SADDLE_SLOT);
         if (!saddle.isEmpty()) tag.put(TAG_SADDLE, saddle.save(new CompoundTag()));
-        if (home != null) {
-            tag.put(TAG_BEACON, NbtUtils.writeBlockPos(home.pos()));
-            tag.putString(TAG_BEACON_DIMENSION, home.dimension().location().toString());
-        }
+        writeGlobalPos(tag, home, TAG_BEACON, TAG_BEACON_DIMENSION);
+        writeGlobalPos(tag, wildHome, TAG_WILD_HOME, TAG_WILD_HOME_DIMENSION);
+    }
+
+    private static void writeGlobalPos(CompoundTag tag, @Nullable GlobalPos pos, String posKey, String dimensionKey) {
+        if (pos == null) return;
+        tag.put(posKey, NbtUtils.writeBlockPos(pos.pos()));
+        tag.putString(dimensionKey, pos.dimension().location().toString());
     }
 
     @Override
@@ -491,7 +504,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         }
         tameProgress = tag.getInt(TAG_TAME_PROGRESS);
         tamedAt = tag.getLong(TAG_TAMED_AT);
-        home = readHome(tag);
+        home = readGlobalPos(tag, TAG_BEACON, TAG_BEACON_DIMENSION);
+        wildHome = readGlobalPos(tag, TAG_WILD_HOME, TAG_WILD_HOME_DIMENSION);
         setFlying(tag.getBoolean(TAG_FLYING));
         setSwimMode(tag.getBoolean(TAG_SWIM_MODE));
         // The species may have lost a mode since the save was written; an unavailable mode falls back to the first
@@ -512,12 +526,12 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     }
 
     @Nullable
-    private GlobalPos readHome(CompoundTag tag) {
-        if (!tag.contains(TAG_BEACON, Tag.TAG_COMPOUND)) return null;
-        ResourceLocation dimension = tag.contains(TAG_BEACON_DIMENSION, Tag.TAG_STRING)
-                ? ResourceLocation.tryParse(tag.getString(TAG_BEACON_DIMENSION)) : null;
-        ResourceKey<Level> dimensionKey = dimension != null ? ResourceKey.create(Registries.DIMENSION, dimension) : level().dimension();
-        return GlobalPos.of(dimensionKey, NbtUtils.readBlockPos(tag.getCompound(TAG_BEACON)));
+    private GlobalPos readGlobalPos(CompoundTag tag, String posKey, String dimensionKey) {
+        if (!tag.contains(posKey, Tag.TAG_COMPOUND)) return null;
+        ResourceLocation dimension = tag.contains(dimensionKey, Tag.TAG_STRING)
+                ? ResourceLocation.tryParse(tag.getString(dimensionKey)) : null;
+        ResourceKey<Level> dimensionId = dimension != null ? ResourceKey.create(Registries.DIMENSION, dimension) : level().dimension();
+        return GlobalPos.of(dimensionId, NbtUtils.readBlockPos(tag.getCompound(posKey)));
     }
 
     public static AttributeSupplier.Builder createAttributes() {
@@ -526,7 +540,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
                 .add(Attributes.MOVEMENT_SPEED, 0.25)
                 .add(Attributes.FLYING_SPEED, 0.6)
                 .add(Attributes.ATTACK_DAMAGE, 4.0)
-                .add(Attributes.FOLLOW_RANGE, 16.0);
+                .add(Attributes.FOLLOW_RANGE, 32.0);
     }
 
     @Override
@@ -545,17 +559,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         goalSelector.addGoal(4, new DragonRoamFlightGoal(this));
         goalSelector.addGoal(4, new DragonRoamSwimGoal(this));
         goalSelector.addGoal(5, new MoveTowardsRestrictionGoal(this, 1.0));
-        goalSelector.addGoal(6, new FollowOwnerGoal(this, 1.0, 10.0f, 2.0f, false) {
-            @Override
-            public boolean canUse() {
-                return getCommand() == DragonCommand.FOLLOW && super.canUse();
-            }
-
-            @Override
-            public boolean canContinueToUse() {
-                return getCommand() == DragonCommand.FOLLOW && super.canContinueToUse();
-            }
-        });
+        goalSelector.addGoal(6, new DragonFollowOwnerGoal(this));
         goalSelector.addGoal(7, new ReturnToWaterGoal(this));
         goalSelector.addGoal(8, new WaterAvoidingRandomStrollGoal(this, 1.0));
         goalSelector.addGoal(9, new LookAtPlayerGoal(this, Player.class, 8.0f));
@@ -590,6 +594,21 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
 
     public boolean isHomeInThisDimension() {
         return home != null && home.dimension() == level().dimension();
+    }
+
+    /** Where a wild dragon first found itself, which its idle flights circle. Always null once tamed. */
+    @Nullable
+    public GlobalPos getWildHome() {
+        return isTame() ? null : wildHome;
+    }
+
+    // Set here rather than on spawn so dragons from older saves get one too; a tamed dragon circles its beacon or owner instead
+    private void tickWildHome() {
+        if (isTame()) {
+            wildHome = null;
+        } else if (wildHome == null || wildHome.dimension() != level().dimension()) {
+            wildHome = GlobalPos.of(level().dimension(), blockPosition());
+        }
     }
 
     /** Gives the dragon a home and sends it there to wander. */
@@ -708,6 +727,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             swimNavigationConfigured = true;
         }
         if (tickCount % ROSTER_UPDATE_INTERVAL == 0) updateRoster();
+        tickWildHome();
         if (home == null || tickCount % getStats().home().checkIntervalTicks() != 0) return;
         if (isWalkingHome()) DragonHomecoming.track(this);
         if (isHomeInThisDimension() && level().isLoaded(home.pos())) {
@@ -816,6 +836,12 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         }
         if (isInSwimMode() && isEffectiveAi() && !isVehicle()) {
             travelSwimming(input);
+            return;
+        }
+        if (isFlying() && isEffectiveAi() && !isVehicle()) {
+            // The flight move control sets the velocity; vanilla's air push and drag on top made it bounce
+            move(MoverType.SELF, getDeltaMovement());
+            calculateEntityAnimation(true);
             return;
         }
         super.travel(input);
