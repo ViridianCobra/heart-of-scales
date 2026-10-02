@@ -316,12 +316,9 @@ public class DragonRoamFlightGoal extends Goal {
         return 1.0 + share * (MAX_CATCH_UP_SPEED - 1.0);
     }
 
-    /** The owner a tamed dragon is told to follow, when they are here to follow. */
     @Nullable
     private LivingEntity followedOwner() {
-        if (!dragon.isTame() || dragon.getCommand() != DragonCommand.FOLLOW) return null;
-        LivingEntity owner = dragon.getOwner();
-        return owner != null && !owner.isSpectator() ? owner : null;
+        return dragon.getFollowedOwner();
     }
 
     private boolean isOwnerAirborne() {

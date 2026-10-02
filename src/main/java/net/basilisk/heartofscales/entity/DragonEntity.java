@@ -3,6 +3,7 @@ package net.basilisk.heartofscales.entity;
 import net.basilisk.heartofscales.block.DragonBeaconBlock;
 import net.basilisk.heartofscales.entity.ai.DragonFlightMoveControl;
 import net.basilisk.heartofscales.entity.ai.DragonFollowOwnerGoal;
+import net.basilisk.heartofscales.entity.ai.OwnerCatchUp;
 import net.basilisk.heartofscales.entity.ai.DragonLookControl;
 import net.basilisk.heartofscales.entity.ai.DragonRoamFlightGoal;
 import net.basilisk.heartofscales.entity.ai.DragonRoamSwimGoal;
@@ -61,6 +62,7 @@ import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
@@ -131,6 +133,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
     /** Share of the way the client roll closes on the synced AI bank each tick; the server has already eased it. */
     private static final float SYNCED_BANK_EASING = 0.5f;
+    private static final int LEFT_BEHIND_CHECK_TICKS = 20;
     private static final EntityDataAccessor<Boolean> DATA_EXHAUSTED =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Byte> DATA_FLIGHT_MODE =
@@ -732,6 +735,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         }
         tickAiBank();
         tickGliding();
+        tickLeftBehind();
         tickStamina();
         WaterBoundCrawl.tick(this);
         if (isInSwimMode()) RiddenSwimming.topUpPassengerAir(this);
@@ -1028,6 +1032,32 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
                 ? Mth.clamp(yawDelta * flight.aiRollPerYawDegree(), -flight.maxRoll(), flight.maxRoll()) : 0.0f;
         aiBank += (target - aiBank) * flight.rollSmoothing();
         entityData.set(DATA_AI_BANK, aiBank);
+    }
+
+    /** The owner a tamed dragon told to Follow is keeping with, when they are here to follow: same dimension, not spectating. */
+    @Nullable
+    public LivingEntity getFollowedOwner() {
+        if (!isTame() || getCommand() != DragonCommand.FOLLOW) return null;
+        LivingEntity owner = getOwner();
+        return owner != null && !owner.isSpectator() ? owner : null;
+    }
+
+    /**
+     * A following dragon about to fall out of the area the server runs is moved to its owner while it still can be: once
+     * frozen it runs no code. Checked here rather than in a goal so it applies walking, chasing in the air or otherwise.
+     */
+    private void tickLeftBehind() {
+        if (tickCount % LEFT_BEHIND_CHECK_TICKS != 0 || isPassenger() || isLeashed() || isVehicle()
+                || !(level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        LivingEntity owner = getFollowedOwner();
+        if (owner == null) return;
+        ChunkPos here = chunkPosition();
+        ChunkPos theirs = owner.chunkPosition();
+        if (OwnerCatchUp.nearSimulationEdge(here.x, here.z, theirs.x, theirs.z, serverLevel.getServer().getPlayerList().getSimulationDistance())) {
+            OwnerCatchUp.teleportNear(this, owner);
+        }
     }
 
     /** Wings held out rather than flapping. Synced: the client has neither an AI dragon's exact velocity nor the rider's sprint. */
