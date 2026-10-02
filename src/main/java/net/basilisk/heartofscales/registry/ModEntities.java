@@ -16,6 +16,9 @@ public final class ModEntities {
     public static final RegistryObject<EntityType<DragonEntity>> DRAGON = ENTITY_TYPES.register("dragon",
             () -> EntityType.Builder.of(DragonEntity::new, MobCategory.CREATURE)
                     .sized(1.5f, 1.6f)
+                    // Every tick rather than vanilla's 3: clients only slide toward the last position sent, so at flight
+                    // speed one late update makes the dragon visibly stop and catch up
+                    .updateInterval(1)
                     .build("dragon"));
 
     public static void registerAttributes(EntityAttributeCreationEvent event) {
