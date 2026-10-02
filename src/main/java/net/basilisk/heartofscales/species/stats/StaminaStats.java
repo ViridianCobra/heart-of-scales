@@ -4,9 +4,9 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 /**
- * Sprint stamina. The bar holds {@code max} points; sprinting spends a full bar over {@code drainSeconds}, and it refills
- * at {@code regen} per tick after {@code regenDelayTicks} without sprinting. Once empty, sprint stays locked until
- * {@code recoveredFraction} of the bar is back.
+ * A drain-and-refill bar, used for sprint stamina and the breath meter. The bar holds {@code max} points; using it spends a
+ * full bar over {@code drainSeconds}, and it refills at {@code regen} per tick after {@code regenDelayTicks} without use.
+ * Once empty, it stays locked until {@code recoveredFraction} of the bar is back.
  */
 public record StaminaStats(float max, float drainSeconds, float regen, int regenDelayTicks, float recoveredFraction) {
     public static final StaminaStats DEFAULT = new StaminaStats(100.0f, 5.0f, 0.5f, 20, 0.25f);

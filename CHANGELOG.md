@@ -11,6 +11,7 @@ When a version is released, drop "(Unreleased)" from its heading and start the n
 - Fixed the nest and egg being drawn full block size in the inventory, in hand and on the ground, and the dropped nest sinking into the ground.
 - Fixed hatching messages showing their translation key instead of text.
 - Dragon chow, one per subspecies, crafted from a bowl, dracip petals and two ingredients. Each subspecies' chow is now its favourite food, and feeding it gives the bowl back. The old cooked favourites are still ordinary dragon food. The Codex has a Dragon Chow page with the recipes.
+- Dragon breath. Hold Dragon Breath (R) while riding to breathe at whatever your crosshair is on. Land dragons breathe a dust stream full of rocks, air dragons blast a stream of air that lifts what it hits, and water dragons a stream of water that drives it into the ground. All three do damage and never hit you, your other pets or blocks, and the push respects no-PvP servers and spawn protection. Breath has its own meter under the stamina bar, coloured by breath type, and locks out in red when it runs dry until a quarter has come back. Each subspecies' breath can be changed in its species file.
 
 ## 0.0.1
 - Dragon egg block and item carrying a subspecies, tinted per species.

@@ -9,6 +9,7 @@ import net.basilisk.heartofscales.entity.ai.DragonSwimMoveControl;
 import net.basilisk.heartofscales.entity.ai.FleeCarelessPlayerGoal;
 import net.basilisk.heartofscales.entity.ai.ReturnToWaterGoal;
 import net.basilisk.heartofscales.entity.ai.TemptWithFoodGoal;
+import net.basilisk.heartofscales.entity.breath.DragonBreath;
 import net.basilisk.heartofscales.genome.DragonGenome;
 import net.basilisk.heartofscales.genome.Inheritance;
 import net.basilisk.heartofscales.item.ChowItem;
@@ -128,6 +129,12 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private static final EntityDataAccessor<Byte> DATA_FLIGHT_MODE =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BYTE);
     private static final String TAG_FLIGHT_MODE = "FlightMode";
+    private static final EntityDataAccessor<Float> DATA_BREATH =
+            SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.FLOAT);
+    private static final EntityDataAccessor<Boolean> DATA_BREATH_EXHAUSTED =
+            SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Boolean> DATA_BREATHING =
+            SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
     public static final int SADDLE_SLOT = 0;
     private static final int INVENTORY_SIZE = 1;
     // Seat height above the feet; the placeholder saddle bone is at 20/16 but a sitting rider looks right a little lower
@@ -156,6 +163,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private final MoveControl swimMoveControl;
     private final PathNavigation swimNavigation;
     private final SimpleContainer inventory = new SimpleContainer(INVENTORY_SIZE);
+    private final DragonBreath breath = new DragonBreath(this, DATA_BREATH, DATA_BREATH_EXHAUSTED, DATA_BREATHING);
     // Transient rider input, held on the server and on the rider's client
     private boolean riderAscending;
     private boolean riderDescending;
@@ -207,6 +215,9 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         entityData.define(DATA_FLIGHT_MODE, (byte) FlightMode.FREE.ordinal());
         entityData.define(DATA_STAMINA, StaminaStats.DEFAULT.max());
         entityData.define(DATA_EXHAUSTED, false);
+        entityData.define(DATA_BREATH, StaminaStats.DEFAULT.max());
+        entityData.define(DATA_BREATH_EXHAUSTED, false);
+        entityData.define(DATA_BREATHING, false);
     }
 
     public FlightMode getFlightMode() {
@@ -258,6 +269,10 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
 
     public void setRiderSprinting(boolean sprinting) {
         this.riderSprinting = sprinting;
+    }
+
+    public DragonBreath getBreath() {
+        return breath;
     }
 
     /** Stamina left, 0 to 1. */
@@ -697,9 +712,11 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         super.tick();
         if (level().isClientSide) {
             tickRoll();
+            breath.tickClient();
             return;
         }
         tickStamina();
+        breath.tick();
         WaterBoundCrawl.tick(this);
         if (isInSwimMode()) RiddenSwimming.topUpPassengerAir(this);
         if (!swimNavigationConfigured && canSwim()) {
@@ -1021,6 +1038,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         riderDescending = false;
         riderFreeCam = false;
         riderSprinting = false;
+        breath.setRiderBreathing(false);
         wasFreeCam = false;
         freeCamCatchingUp = false;
         riddenFlightTicks = 0;

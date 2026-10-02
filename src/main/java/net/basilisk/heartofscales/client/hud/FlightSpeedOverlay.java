@@ -1,6 +1,7 @@
 package net.basilisk.heartofscales.client.hud;
 
 import net.basilisk.heartofscales.entity.DragonEntity;
+import net.basilisk.heartofscales.entity.breath.DragonBreath;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -11,8 +12,8 @@ import java.util.Locale;
 
 /**
  * Speed readout beside the hotbar while the player is flying or swimming a dragon, red when a glide is stalling, with
- * the dragon's sprint stamina as a bar beneath it, red while it is locked out after running dry. On the ground only
- * the bar shows, in the same place so it does not jump on take-off.
+ * the dragon's sprint stamina as a bar beneath it and its breath meter beneath that, each red while locked out after
+ * running dry. On the ground only the bars show, in the same place so they do not jump on take-off.
  */
 public final class FlightSpeedOverlay implements IGuiOverlay {
     public static final String ID = "flight_speed";
@@ -34,7 +35,7 @@ public final class FlightSpeedOverlay implements IGuiOverlay {
         if (dragon.getControllingPassenger() != mc.player) return;
 
         int x = screenWidth / 2 + HOTBAR_HALF_WIDTH + 8;
-        int y = screenHeight - 14;
+        int y = screenHeight - 17;
         if (dragon.isInFluidMode()) {
             // Distance covered in the last tick, so it reads the same in free flight and glide
             double dx = dragon.getX() - dragon.xo;
@@ -50,5 +51,12 @@ public final class FlightSpeedOverlay implements IGuiOverlay {
         int filled = Math.round(STAMINA_BAR_WIDTH * dragon.getStaminaFraction());
         graphics.fill(x, barY, x + STAMINA_BAR_WIDTH, barY + STAMINA_BAR_HEIGHT, COLOUR_STAMINA_BACK);
         graphics.fill(x, barY, x + filled, barY + STAMINA_BAR_HEIGHT, dragon.isExhausted() ? COLOUR_STAMINA_EXHAUSTED : COLOUR_STAMINA);
+
+        DragonBreath breath = dragon.getBreath();
+        int breathY = barY + STAMINA_BAR_HEIGHT + 1;
+        int breathFilled = Math.round(STAMINA_BAR_WIDTH * breath.meterFraction());
+        graphics.fill(x, breathY, x + STAMINA_BAR_WIDTH, breathY + STAMINA_BAR_HEIGHT, COLOUR_STAMINA_BACK);
+        graphics.fill(x, breathY, x + breathFilled, breathY + STAMINA_BAR_HEIGHT,
+                breath.isExhausted() ? COLOUR_STAMINA_EXHAUSTED : breath.type().barColour());
     }
 }

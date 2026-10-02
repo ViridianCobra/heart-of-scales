@@ -35,6 +35,7 @@ public final class RiderInputHandler {
     private static boolean lastDescending;
     private static boolean lastFreeCam;
     private static boolean lastSprinting;
+    private static boolean lastBreathing;
     /** Free cam is toggled by its key; it only means anything in the air, so landing and dismounting clear it. */
     private static boolean freeCamOn;
     /** Camera the player had before riding forced third person; null when nothing was forced. */
@@ -54,6 +55,7 @@ public final class RiderInputHandler {
             lastDescending = false;
             lastFreeCam = false;
             lastSprinting = false;
+            lastBreathing = false;
             freeCamOn = false;
             // A press made off the dragon must not flip free cam on the next mount
             while (ModKeyMappings.FREE_CAM.consumeClick()) {}
@@ -80,10 +82,12 @@ public final class RiderInputHandler {
         boolean sprinting = minecraft.options.keySprint.isDown();
         dragon.setRiderFreeCam(freeCam);
         dragon.setRiderSprinting(sprinting);
+        boolean breathing = ModKeyMappings.BREATHE.isDown();
         if (ascending != lastAscending || descending != lastDescending || freeCam != lastFreeCam
-                || sprinting != lastSprinting || toggleMode) {
-            ModNetwork.CHANNEL.sendToServer(new RiderInputPacket(ascending, descending, freeCam, sprinting, toggleMode));
+                || sprinting != lastSprinting || breathing != lastBreathing || toggleMode) {
+            ModNetwork.CHANNEL.sendToServer(new RiderInputPacket(ascending, descending, freeCam, sprinting, breathing, toggleMode));
             lastSprinting = sprinting;
+            lastBreathing = breathing;
             lastAscending = ascending;
             lastDescending = descending;
             lastFreeCam = freeCam;

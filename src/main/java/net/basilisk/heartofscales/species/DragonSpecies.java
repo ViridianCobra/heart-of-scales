@@ -4,6 +4,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.basilisk.heartofscales.HeartOfScales;
+import net.basilisk.heartofscales.entity.breath.BreathType;
 import net.basilisk.heartofscales.species.stats.DragonStats;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
@@ -30,6 +31,11 @@ public record DragonSpecies(SpeciesGroup species, boolean flies, boolean glides,
 
     public boolean isFood(ItemStack stack) {
         return stack.is(foods) || isFavouriteFood(stack);
+    }
+
+    /** The breath this subspecies uses: the one its file names, else its species group's. */
+    public BreathType breathType() {
+        return stats.breath().type().orElse(species.defaultBreath());
     }
 
     private static final Codec<Integer> HEX_COLOUR = Codec.STRING.comapFlatMap(
