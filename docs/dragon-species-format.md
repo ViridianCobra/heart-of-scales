@@ -91,15 +91,20 @@ turn rates in degrees per tick. A "factor" multiplies something else. A "respons
       "ai_speed_factor": 0.5,
       "ai_max_yaw_turn": 3.0,
       "ai_max_pitch_turn": 10.0,
+      "ai_roll_per_yaw_degree": 20.0,
       "roam_takeoff_chance": 600,
+      "wander_radius": 32.0,
+      "owner_wander_radius": 16.0,
+      "wander_min_ticks": 600,
+      "wander_max_ticks": 1800,
+      "cruise_min_height": 8,
+      "cruise_max_height": 20,
       "circle_min_radius": 16.0,
       "circle_max_radius": 32.0,
       "owner_circle_min_radius": 10.0,
       "owner_circle_max_radius": 16.0,
-      "circle_min_height": 8,
-      "circle_max_height": 20,
       "circle_min_laps": 1,
-      "circle_max_laps": 3
+      "circle_max_laps": 2
     },
     "glide": {
       "yaw_rate": 4.0,
@@ -219,11 +224,13 @@ Ridden free flight, the render lean, free cam, and the AI's own flying.
 | `ai_speed_factor` | AI flight cruise speed as a multiple of `flying_speed`, in blocks per tick. Climbs and dives are held to 30 degrees and ease out as the target height is reached. |
 | `ai_max_yaw_turn` | AI flight: yaw turn per tick. |
 | `ai_max_pitch_turn` | AI flight: pitch turn per tick. |
-| `roam_takeoff_chance` | Each tick on the ground an idle dragon has a 1 in this chance to take off. A wild dragon circles where it first appeared and a dragon told to Wander circles its beacon. A following dragon circles its owner, and only takes off on its own with them within 16 blocks; it also takes off straight away to catch up when they are more than 24 blocks away or 6 above it. Following dragons never teleport. |
-| `circle_min_radius`, `circle_max_radius` | Blocks from the centre to the circle an idle flight laps. Picked once per flight. |
-| `owner_circle_min_radius`, `owner_circle_max_radius` | The same, for a following dragon circling its owner. Well outside the circle it flies faster, up to double `ai_speed_factor`, to catch up. |
-| `circle_min_height`, `circle_max_height` | Blocks above the highest ground or treetop under the circle that the laps are flown at, and never less than 4 above a following dragon's owner. Picked once per flight, rechecked every second as the ground under the circle changes. |
-| `circle_min_laps`, `circle_max_laps` | Laps flown before landing near the centre. |
+| `ai_roll_per_yaw_degree` | AI flight: degrees of lean into a turn per degree of yaw turned that tick, capped at `max_roll` and eased by `roll_smoothing`. The ridden equivalent is `roll_per_yaw_degree`. |
+| `roam_takeoff_chance` | Each tick on the ground an idle dragon has a 1 in this chance to take off. A wild dragon flies around where it first appeared, a dragon told to Wander around its beacon, and a following dragon around its owner, only taking off on its own with them within 16 blocks. A following dragon also takes off straight away to catch up when its owner is more than 24 blocks away or 6 above it. Following dragons never teleport. |
+| `wander_radius`, `owner_wander_radius` | How far an idle flight meanders from its centre before it is pulled back, from home or beacon and from an owner. Flight turns smoothly at up to 60% of `ai_max_yaw_turn`. Well past the radius it flies straight back, faster the further out it is, up to double `ai_speed_factor`: how a following dragon catches up. |
+| `wander_min_ticks`, `wander_max_ticks` | How long an idle flight lasts before it lands near its centre. It keeps flying while still catching up, or while its owner is in the air. |
+| `cruise_min_height`, `cruise_max_height` | Blocks above the highest ground or treetop under the dragon and up to 16 blocks ahead of it that a flight is flown at, swelling up and down by 4. Never less than 4 above a following dragon's owner. Picked once per flight. Now and then a flight swoops down to 4 above the ground and climbs back. |
+| `circle_min_radius`, `circle_max_radius`, `owner_circle_min_radius`, `owner_circle_max_radius` | Now and then a flight laps its centre instead of meandering: the lap's radius, around home or beacon and around an owner. |
+| `circle_min_laps`, `circle_max_laps` | How many laps one of those goes round before meandering again. |
 
 ### glide
 

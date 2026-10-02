@@ -20,6 +20,9 @@ public class DragonFlightMoveControl extends MoveControl {
     /** Share of the way to the wanted velocity covered each tick: the dragon's inertia. Low enough values overshoot. */
     static final double RESPONSIVENESS = 0.1;
     private static final double REACHED_DISTANCE_SQR = 1.0;
+    /** AI flight glides once descending steeper than this many degrees, and flaps again once shallower than the stop angle. */
+    private static final double GLIDE_START_ANGLE = 10.0;
+    private static final double GLIDE_STOP_ANGLE = 4.0;
 
     private final DragonEntity dragon;
 
@@ -64,6 +67,12 @@ public class DragonFlightMoveControl extends MoveControl {
 
     private void slowToHover() {
         mob.setDeltaMovement(mob.getDeltaMovement().scale(1.0 - RESPONSIVENESS));
+    }
+
+    /** Glide on a descent, flap when climbing or level; the gap between the two angles stops it flickering between them. */
+    public static boolean nextAiGliding(boolean gliding, Vec3 velocity) {
+        double descent = Math.toDegrees(Math.atan2(-velocity.y, velocity.horizontalDistance()));
+        return descent > (gliding ? GLIDE_STOP_ANGLE : GLIDE_START_ANGLE);
     }
 
     /** One tick of easing toward {@link #wantedVelocity}. */
