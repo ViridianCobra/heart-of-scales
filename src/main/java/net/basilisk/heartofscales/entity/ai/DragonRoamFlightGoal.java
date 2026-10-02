@@ -19,22 +19,36 @@ import org.jetbrains.annotations.Nullable;
 import java.util.EnumSet;
 
 /**
- * A flying dragon takes off, flies a few laps around its centre at one steady height, then lands near the centre.
- * See {@link #circleCentre(BlockPos, DragonCommand, BlockPos, Vec3)} for what it circles. A following dragon also takes
- * off to catch its owner up (see {@link #shouldChaseOwner}): with the owner as the centre, being far off the circle
- * just means flying at them, faster the further behind it is. Targets go straight to the move control (no pathfinder)
- * so the flight is one continuous curve.
+ * A flying dragon takes off, meanders around its centre for a while (see {@link WanderSteering}), now and then swooping
+ * low or flying a lap or two of the centre, then lands near it. See
+ * {@link #circleCentre(BlockPos, DragonCommand, BlockPos, Vec3)} for what the centre is. A following dragon also takes
+ * off to catch its owner up (see {@link #shouldChaseOwner}): far past the wander radius the leash just flies it at
+ * them, faster the further behind it is. Targets go straight to the move control (no pathfinder), which holds the
+ * turn and climb limits, so the flight is one continuous curve.
  */
 public class DragonRoamFlightGoal extends Goal {
-    /** How far round the circle ahead of itself the dragon aims. */
+    private enum Mode { WANDER, LAP, LANDING }
+
+    /** How far ahead along its new heading the wandering dragon is aimed. */
+    private static final double WANDER_LOOKAHEAD = 8.0;
+    /** Wander turns stay within this share of the yaw limit, so the dragon is never pinned at full turn. */
+    private static final double WANDER_TURN_SHARE = 0.6;
+    /** Ground is checked this far ahead along the heading as well as underneath, so it rises before a hill, not at it. */
+    private static final double[] GROUND_AHEAD = {0.0, 6.0, 11.0, 16.0};
+    private static final int GROUND_CHECK_TICKS = 10;
+    /** 1 in this chance per tick while wandering: a swoop on average every 30 s, a lap every 75 s. */
+    private static final int SWOOP_CHANCE = 600;
+    private static final int LAP_CHANCE = 1500;
+    /** A swoop only starts this high up, dives to SWOOP_SKIM_HEIGHT above the ground, and lasts SWOOP_TICKS. */
+    private static final double SWOOP_MIN_HEIGHT = 10.0;
+    private static final double SWOOP_SKIM_HEIGHT = 4.0;
+    private static final int SWOOP_TICKS = 120;
+    /** How far round the circle ahead of itself a lapping dragon aims. */
     private static final double LEAD_ANGLE = Math.toRadians(30.0);
-    /** How much the radius swells and shrinks around a lap, as a share of it, so laps are not perfect circles. */
+    /** How much a lap's radius swells and shrinks, as a share of it, so laps are not perfect circles. */
     private static final double WOBBLE = 0.1;
     /** Laps only count once the dragon is this far out, as a share of the radius; near the centre its angle swings wildly. */
     private static final double COUNTING_RADIUS_SHARE = 0.5;
-    private static final int HEIGHT_SAMPLES = 12;
-    /** The circle height is re-checked this often, for a centre that moves or ground that has loaded since. */
-    private static final int ALTITUDE_CHECK_TICKS = 20;
     /** A following dragon only takes off on a whim with its owner this close. */
     private static final double IDLE_OWNER_RANGE = 16.0;
     /** A following dragon flies after an owner further away than this, or higher above it than CHASE_HEIGHT. */
@@ -42,11 +56,11 @@ public class DragonRoamFlightGoal extends Goal {
     private static final double CHASE_HEIGHT = 6.0;
     /** Ticks after landing before it will take off to chase again, so an owner on a tower does not make it hop. */
     private static final int CHASE_COOLDOWN_TICKS = 100;
-    /** An owner this far above the ground under them is flying: the dragon keeps circling them until they come down. */
+    /** An owner this far above the ground under them is flying: the dragon stays up with them until they come down. */
     private static final double OWNER_AIRBORNE_HEIGHT = 4.0;
-    /** Laps are flown at least this far above the owner. */
+    /** Flown at least this far above the owner. */
     private static final double OWNER_CLEARANCE = 4.0;
-    /** Past the circle by this much the dragon starts to speed up, reaching full catch-up speed CATCH_UP_RAMP further out. */
+    /** Past the radius by this much the dragon starts to speed up, reaching full catch-up speed CATCH_UP_RAMP further out. */
     private static final double CATCH_UP_MARGIN = 8.0;
     private static final double CATCH_UP_RAMP = 16.0;
     private static final double MAX_CATCH_UP_SPEED = 2.0;
@@ -58,19 +72,26 @@ public class DragonRoamFlightGoal extends Goal {
     /** Stuck this many times in one flight -> give up and land. */
     private static final int MAX_STUCK_RETARGETS = 2;
     private static final double STUCK_DISTANCE_SQR = 0.5 * 0.5;
+    /** Height gained after getting stuck, since what blocks a flier is usually terrain or trees. */
+    private static final int STUCK_CLIMB = 6;
 
     private final DragonEntity dragon;
-    private boolean landing;
+    private Mode mode = Mode.WANDER;
     @Nullable
     private Vec3 landingTarget;
-    private boolean clockwise;
-    private double radius;
-    private double wobblePhase;
+    @Nullable
+    private WanderSteering wander;
+    private int flightTicks;
+    private int flightTicksLeft;
     private int heightAboveGround;
-    private double altitude;
-    private int altitudeCheckTicks;
+    private int groundHeight;
+    private int groundCheckTicks;
+    private int swoopTicksLeft;
+    private boolean clockwise;
+    private double lapRadius;
+    private double wobblePhase;
     private double lastAngle;
-    /** Radians still to fly round the centre before landing. */
+    /** Radians still to fly round the centre before the lap ends. */
     private double angleLeft;
     private int stuckTicks;
     private int stuckRetargets;
@@ -109,29 +130,24 @@ public class DragonRoamFlightGoal extends Goal {
     @Override
     public void start() {
         dragon.setFlying(true);
-        landing = false;
+        mode = Mode.WANDER;
         landingTarget = null;
         stuckTicks = 0;
         stuckRetargets = 0;
         lastPos = dragon.position();
-        Vec3 centre = circleCentre();
-        if (centre == null) {
-            // Nothing to circle, as when a following dragon is reloaded mid-flight with its owner away: just come down
-            landing = true;
+        if (circleCentre() == null) {
+            // Nothing to fly around, as when a following dragon is reloaded mid-flight with its owner away: just come down
+            mode = Mode.LANDING;
             return;
         }
         RandomSource random = dragon.getRandom();
         FlightStats flight = stats();
-        clockwise = random.nextBoolean();
-        radius = followedOwner() != null
-                ? Mth.nextDouble(random, flight.ownerCircleMinRadius(), flight.ownerCircleMaxRadius())
-                : Mth.nextDouble(random, flight.circleMinRadius(), flight.circleMaxRadius());
-        wobblePhase = random.nextDouble() * Math.PI * 2;
-        heightAboveGround = Mth.nextInt(random, flight.circleMinHeight(), flight.circleMaxHeight());
-        altitude = cruiseAltitude(centre);
-        altitudeCheckTicks = ALTITUDE_CHECK_TICKS;
-        lastAngle = CirclePath.angleAround(centre, dragon.position());
-        angleLeft = Mth.nextInt(random, flight.circleMinLaps(), flight.circleMaxLaps()) * Math.PI * 2;
+        wander = WanderSteering.random(random, flight.aiMaxYawTurn() * WANDER_TURN_SHARE);
+        flightTicks = 0;
+        flightTicksLeft = Mth.nextInt(random, flight.wanderMinTicks(), flight.wanderMaxTicks());
+        heightAboveGround = Mth.nextInt(random, flight.cruiseMinHeight(), flight.cruiseMaxHeight());
+        groundCheckTicks = 0;
+        swoopTicksLeft = 0;
     }
 
     @Override
@@ -148,47 +164,126 @@ public class DragonRoamFlightGoal extends Goal {
 
     @Override
     public void tick() {
-        if (landing && dragon.onGround()) {
+        if (mode == Mode.LANDING && dragon.onGround()) {
             dragon.setFlying(false);
             return;
         }
         if (isStuck()) {
             stuckTicks = 0;
-            if (landing || ++stuckRetargets > MAX_STUCK_RETARGETS) {
+            if (mode == Mode.LANDING || ++stuckRetargets > MAX_STUCK_RETARGETS) {
                 dragon.setFlying(false);
                 return;
             }
-            // Blocked by something: turn round and circle the other way
+            // Blocked by something: climb over it, and lap the other way
+            heightAboveGround += STUCK_CLIMB;
+            swoopTicksLeft = 0;
             clockwise = !clockwise;
         }
 
         Vec3 centre = circleCentre();
-        if (!landing && centre == null) landing = true;
-        if (!landing) {
-            if (--altitudeCheckTicks <= 0) {
-                altitudeCheckTicks = ALTITUDE_CHECK_TICKS;
-                altitude = cruiseAltitude(centre);
+        if (mode != Mode.LANDING && centre == null) mode = Mode.LANDING;
+        if (mode != Mode.LANDING) {
+            flightTicks++;
+            if (--groundCheckTicks <= 0) {
+                groundCheckTicks = GROUND_CHECK_TICKS;
+                groundHeight = groundUnderAndAhead();
             }
-            // Laps still count while the owner is flying, so it comes down soon after they do
-            if (lapsFinished(centre) && !isOwnerAirborne()) landing = true;
+            // A lap is finished first, a dragon still catching up keeps going, and a flying owner is stayed with until they come down
+            if (--flightTicksLeft <= 0 && mode == Mode.WANDER && horizontalDistanceTo(centre) <= wanderRadius() && !isOwnerAirborne()) {
+                mode = Mode.LANDING;
+            }
         }
+
         Vec3 target;
         double speed = 1.0;
-        if (landing) {
+        if (mode == Mode.LANDING) {
             // Kept until touchdown; the stuck check covers the last stretch
             if (landingTarget == null) landingTarget = pickLandingTarget(centre);
             target = landingTarget;
+        } else if (mode == Mode.LAP) {
+            if (lapsFinished(centre)) mode = Mode.WANDER;
+            double wobbledRadius = lapRadius * (1 + WOBBLE * Math.sin(2 * lastAngle + wobblePhase));
+            target = CirclePath.aimPoint(centre, dragon.position(), wobbledRadius, LEAD_ANGLE, clockwise, cruiseAltitude());
+            speed = catchUpSpeed(horizontalDistanceTo(centre), lapRadius);
         } else {
-            double wobbledRadius = radius * (1 + WOBBLE * Math.sin(2 * lastAngle + wobblePhase));
-            target = CirclePath.aimPoint(centre, dragon.position(), wobbledRadius, LEAD_ANGLE, clockwise, altitude);
-            double dx = dragon.getX() - centre.x;
-            double dz = dragon.getZ() - centre.z;
-            speed = catchUpSpeed(Math.sqrt(dx * dx + dz * dz), radius);
+            maybeStartManoeuvre(centre);
+            target = wanderTarget(centre);
+            speed = catchUpSpeed(horizontalDistanceTo(centre), wanderRadius());
         }
         dragon.getMoveControl().setWantedPosition(target.x, target.y, target.z, speed);
     }
 
-    /** What the dragon flies laps around, or null when it has nothing to circle. */
+    /** Carries on a swoop, or now and then starts a swoop or a lap. */
+    private void maybeStartManoeuvre(Vec3 centre) {
+        if (swoopTicksLeft > 0) {
+            swoopTicksLeft--;
+            return;
+        }
+        RandomSource random = dragon.getRandom();
+        if (dragon.getY() - groundHeight >= SWOOP_MIN_HEIGHT && random.nextInt(SWOOP_CHANCE) == 0) {
+            swoopTicksLeft = SWOOP_TICKS;
+        } else if (random.nextInt(LAP_CHANCE) == 0) {
+            startLap(centre);
+        }
+    }
+
+    private void startLap(Vec3 centre) {
+        RandomSource random = dragon.getRandom();
+        FlightStats flight = stats();
+        mode = Mode.LAP;
+        clockwise = random.nextBoolean();
+        lapRadius = followedOwner() != null
+                ? Mth.nextDouble(random, flight.ownerCircleMinRadius(), flight.ownerCircleMaxRadius())
+                : Mth.nextDouble(random, flight.circleMinRadius(), flight.circleMaxRadius());
+        wobblePhase = random.nextDouble() * Math.PI * 2;
+        lastAngle = CirclePath.angleAround(centre, dragon.position());
+        angleLeft = Mth.nextInt(random, flight.circleMinLaps(), flight.circleMaxLaps()) * Math.PI * 2;
+    }
+
+    /** A point a little ahead along the wander's new heading, at the height it should be flying. */
+    private Vec3 wanderTarget(Vec3 centre) {
+        float yaw = dragon.getYRot();
+        double turn = WanderSteering.steer(wander.turn(flightTicks), yaw, dragon.position(), centre, wanderRadius(),
+                stats().aiMaxYawTurn());
+        double heading = Math.toRadians(yaw + turn);
+        return new Vec3(dragon.getX() - Math.sin(heading) * WANDER_LOOKAHEAD, cruiseAltitude(),
+                dragon.getZ() + Math.cos(heading) * WANDER_LOOKAHEAD);
+    }
+
+    /** The flight's height above the ground with the wander's swell, or skimming low in a swoop; never under a flying owner. */
+    private double cruiseAltitude() {
+        double altitude = swoopTicksLeft > 0
+                ? groundHeight + SWOOP_SKIM_HEIGHT
+                : groundHeight + heightAboveGround + wander.swell(flightTicks);
+        LivingEntity owner = followedOwner();
+        return owner != null ? Math.max(altitude, owner.getY() + OWNER_CLEARANCE) : altitude;
+    }
+
+    /** The highest block top under the dragon and along its heading, trees included. */
+    private int groundUnderAndAhead() {
+        Level level = dragon.level();
+        double yaw = Math.toRadians(dragon.getYRot());
+        int highest = level.getHeight(Heightmap.Types.MOTION_BLOCKING, dragon.getBlockX(), dragon.getBlockZ());
+        for (double distance : GROUND_AHEAD) {
+            BlockPos column = BlockPos.containing(dragon.getX() - Math.sin(yaw) * distance, 0, dragon.getZ() + Math.cos(yaw) * distance);
+            if (level.isLoaded(column)) {
+                highest = Math.max(highest, level.getHeight(Heightmap.Types.MOTION_BLOCKING, column.getX(), column.getZ()));
+            }
+        }
+        return highest;
+    }
+
+    private double wanderRadius() {
+        return followedOwner() != null ? stats().ownerWanderRadius() : stats().wanderRadius();
+    }
+
+    private double horizontalDistanceTo(Vec3 centre) {
+        double dx = dragon.getX() - centre.x;
+        double dz = dragon.getZ() - centre.z;
+        return Math.sqrt(dx * dx + dz * dz);
+    }
+
+    /** What the dragon flies around, or null when it has nothing to fly around. */
     @Nullable
     private Vec3 circleCentre() {
         // Only spots in this dimension are passed on
@@ -200,8 +295,8 @@ public class DragonRoamFlightGoal extends Goal {
     }
 
     /**
-     * A wandering dragon circles its beacon, flying out past the box it walks in; a following one circles its owner,
-     * given only when it is following them; a wild one circles where it first appeared.
+     * A wandering dragon flies around its beacon, out past the box it walks in; a following one around its owner,
+     * given only when it is following them; a wild one around where it first appeared.
      */
     @Nullable
     static Vec3 circleCentre(@Nullable BlockPos wildHome, DragonCommand command, @Nullable BlockPos beacon, @Nullable Vec3 owner) {
@@ -215,7 +310,7 @@ public class DragonRoamFlightGoal extends Goal {
         return owner.y - dragon.y > CHASE_HEIGHT || dragon.distanceToSqr(owner) > CHASE_DISTANCE * CHASE_DISTANCE;
     }
 
-    /** Speed multiplier for a dragon this far from the centre: cruise near the circle, up to double when far behind. */
+    /** Speed multiplier for a dragon this far from the centre: cruise within reach of the radius, up to double far out. */
     static double catchUpSpeed(double distanceFromCentre, double radius) {
         double share = Mth.clamp((distanceFromCentre - radius - CATCH_UP_MARGIN) / CATCH_UP_RAMP, 0.0, 1.0);
         return 1.0 + share * (MAX_CATCH_UP_SPEED - 1.0);
@@ -236,20 +331,13 @@ public class DragonRoamFlightGoal extends Goal {
         return owner.getY() - ground > OWNER_AIRBORNE_HEIGHT;
     }
 
-    /** One steady height for the laps: clear of the ground and trees under the circle, and above a flying owner. */
-    private double cruiseAltitude(Vec3 centre) {
-        double clearOfGround = highestGroundAround(centre, radius * (1 + WOBBLE)) + heightAboveGround;
-        LivingEntity owner = followedOwner();
-        return owner != null ? Math.max(clearOfGround, owner.getY() + OWNER_CLEARANCE) : clearOfGround;
-    }
-
     /** Adds this tick's progress round the centre and says whether the laps are done. */
     private boolean lapsFinished(Vec3 centre) {
         Vec3 pos = dragon.position();
         double angle = CirclePath.angleAround(centre, pos);
         double dx = pos.x - centre.x;
         double dz = pos.z - centre.z;
-        if (dx * dx + dz * dz > Mth.square(radius * COUNTING_RADIUS_SHARE)) {
+        if (dx * dx + dz * dz > Mth.square(lapRadius * COUNTING_RADIUS_SHARE)) {
             angleLeft -= CirclePath.progress(lastAngle, angle, clockwise);
         }
         lastAngle = angle;
@@ -269,23 +357,6 @@ public class DragonRoamFlightGoal extends Goal {
 
     private FlightStats stats() {
         return dragon.getStats().flight();
-    }
-
-    /**
-     * The highest block top under the circle and under the dragon itself, trees included, so one level lap clears it
-     * all. Unloaded columns are skipped.
-     */
-    private int highestGroundAround(Vec3 centre, double ringRadius) {
-        Level level = dragon.level();
-        int highest = level.getHeight(Heightmap.Types.MOTION_BLOCKING, dragon.getBlockX(), dragon.getBlockZ());
-        for (int i = 0; i < HEIGHT_SAMPLES; i++) {
-            double angle = i * Math.PI * 2 / HEIGHT_SAMPLES;
-            BlockPos column = BlockPos.containing(centre.x + ringRadius * Math.cos(angle), 0, centre.z + ringRadius * Math.sin(angle));
-            if (level.isLoaded(column)) {
-                highest = Math.max(highest, level.getHeight(Heightmap.Types.MOTION_BLOCKING, column.getX(), column.getZ()));
-            }
-        }
-        return highest;
     }
 
     /** Dry ground near the centre the dragon can see; failing that, a spot a short way ahead; failing that, keep descending. */

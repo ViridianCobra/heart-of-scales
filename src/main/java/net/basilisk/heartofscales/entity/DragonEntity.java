@@ -125,6 +125,12 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private static final String TAG_SADDLE = "Saddle";
     private static final EntityDataAccessor<Float> DATA_STAMINA =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.FLOAT);
+    private static final EntityDataAccessor<Float> DATA_AI_BANK =
+            SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.FLOAT);
+    private static final EntityDataAccessor<Boolean> DATA_GLIDING =
+            SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
+    /** Share of the way the client roll closes on the synced AI bank each tick; the server has already eased it. */
+    private static final float SYNCED_BANK_EASING = 0.5f;
     private static final EntityDataAccessor<Boolean> DATA_EXHAUSTED =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Byte> DATA_FLIGHT_MODE =
@@ -140,6 +146,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private static final double GLIDE_SPEED_UNSET = -1.0;
     private static final RawAnimation SIT = RawAnimation.begin().thenLoop("misc.sit");
     private static final RawAnimation FLY = RawAnimation.begin().thenLoop("misc.fly");
+    private static final RawAnimation GLIDE = RawAnimation.begin().thenLoop("misc.glide");
 
     private final AnimatableInstanceCache geoCache = GeckoLibUtil.createInstanceCache(this);
     private DragonGenome genome = DragonGenome.defaultGenome();
@@ -181,6 +188,9 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private float tiltPitch;
     private float tiltPitchO;
     private float lastYaw;
+    // Server-side AI bank, synced through DATA_AI_BANK
+    private float aiBank;
+    private float lastServerYaw;
 
     public DragonEntity(EntityType<? extends DragonEntity> type, Level level) {
         super(type, level);
@@ -210,6 +220,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         entityData.define(DATA_SADDLED, false);
         entityData.define(DATA_FLIGHT_MODE, (byte) FlightMode.FREE.ordinal());
         entityData.define(DATA_STAMINA, StaminaStats.DEFAULT.max());
+        entityData.define(DATA_AI_BANK, 0.0f);
+        entityData.define(DATA_GLIDING, false);
         entityData.define(DATA_EXHAUSTED, false);
     }
 
@@ -718,6 +730,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             tickRoll();
             return;
         }
+        tickAiBank();
+        tickGliding();
         tickStamina();
         WaterBoundCrawl.tick(this);
         if (isInSwimMode()) RiddenSwimming.topUpPassengerAir(this);
@@ -993,8 +1007,45 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             }
             targetRoll = Mth.clamp(targetRoll, -flight.maxRoll(), flight.maxRoll());
         }
-        roll += (targetRoll - roll) * flight.rollSmoothing();
+        float smoothing = flight.rollSmoothing();
+        if (isFlying() && getControllingPassenger() == null) {
+            targetRoll = entityData.get(DATA_AI_BANK);
+            smoothing = SYNCED_BANK_EASING;
+        }
+        roll += (targetRoll - roll) * smoothing;
         tiltPitch += (targetPitch - tiltPitch) * flight.rollSmoothing();
+    }
+
+    /**
+     * AI flight leans into its turns. Worked out on the server from the exact yaw and synced: clients only get the yaw in
+     * 1.4 degree steps, and only once a step is crossed, so a slow turn reaches them stop-start and the lean stuttered.
+     */
+    private void tickAiBank() {
+        float yawDelta = Mth.degreesDifference(lastServerYaw, getYRot());
+        lastServerYaw = getYRot();
+        FlightStats flight = getStats().flight();
+        float target = isFlying() && getControllingPassenger() == null
+                ? Mth.clamp(yawDelta * flight.aiRollPerYawDegree(), -flight.maxRoll(), flight.maxRoll()) : 0.0f;
+        aiBank += (target - aiBank) * flight.rollSmoothing();
+        entityData.set(DATA_AI_BANK, aiBank);
+    }
+
+    /** Wings held out rather than flapping. Synced: the client has neither an AI dragon's exact velocity nor the rider's sprint. */
+    public boolean isGliding() {
+        return entityData.get(DATA_GLIDING);
+    }
+
+    private void tickGliding() {
+        boolean gliding;
+        if (!isFlying()) {
+            gliding = false;
+        } else if (getControllingPassenger() != null) {
+            // Sprinting in glide mode is the powered wingbeats
+            gliding = getFlightMode() == FlightMode.GLIDE && !isSprinting();
+        } else {
+            gliding = DragonFlightMoveControl.nextAiGliding(isGliding(), getDeltaMovement());
+        }
+        entityData.set(DATA_GLIDING, gliding);
     }
 
     @Override
@@ -1207,8 +1258,9 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         controllers.add(new AnimationController<>(this, "Movement", 5, state -> {
+            if (isFlying()) return state.setAndContinue(isGliding() ? GLIDE : FLY);
             // Fly is the placeholder until a misc.swim animation exists
-            if (isFlying() || isInSwimMode()) return state.setAndContinue(FLY);
+            if (isInSwimMode()) return state.setAndContinue(FLY);
             if (isInSittingPose()) return state.setAndContinue(SIT);
             return state.setAndContinue(state.isMoving() ? DefaultAnimations.WALK : DefaultAnimations.IDLE);
         }));
