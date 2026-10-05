@@ -2,8 +2,10 @@ package net.basilisk.heartofscales.entity.ai;
 
 import net.basilisk.heartofscales.entity.DragonCommand;
 import net.basilisk.heartofscales.entity.DragonEntity;
+import net.basilisk.heartofscales.species.stats.SwimStats;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.HitResult;
@@ -19,18 +21,16 @@ import java.util.Optional;
  */
 public class DragonRoamSwimGoal extends Goal {
     public static final int MIN_DEPTH = 2;
-    private static final int MIN_SWIM_TICKS = 300;
-    private static final int MAX_SWIM_TICKS = 600;
-    private static final int MIN_REST_TICKS = 200;
-    private static final int MAX_REST_TICKS = 400;
-    private static final double MIN_TARGET_DISTANCE = 8.0;
-    private static final double MAX_TARGET_DISTANCE = 16.0;
     private static final float CONE_HALF_ANGLE = 60.0f;
     private static final int TARGET_ATTEMPTS = 8;
     private static final double NEXT_TARGET_DISTANCE_SQR = 4.0 * 4.0;
     private static final int STUCK_TICKS = 40;
     private static final int MAX_STUCK_RETARGETS = 2;
     private static final double STUCK_DISTANCE_SQR = 0.5 * 0.5;
+    /** A following dragon only idles in water within this many blocks of its owner. */
+    private static final double NEAR_OWNER = 8.0;
+    /** Past this the idle swim ends and the follow goal swims or walks after the owner. */
+    private static final double FOLLOW_DISTANCE = 10.0;
 
     private final DragonEntity dragon;
     @Nullable
@@ -48,7 +48,7 @@ public class DragonRoamSwimGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        if (dragon.isVehicle()) return false;
+        if (dragon.isVehicle() || leavesToFollow(dragon.position(), ownerPosition())) return false;
         if (dragon.isInSwimMode()) return true;
         if (restTicksLeft > 0) {
             restTicksLeft -= reducedTickDelay(1);
@@ -64,13 +64,13 @@ public class DragonRoamSwimGoal extends Goal {
     @Override
     public boolean canContinueToUse() {
         // A mounted dragon hands its swim to the rider rather than ending it on this goal's timer
-        return dragon.isInSwimMode() && !dragon.isVehicle();
+        return dragon.isInSwimMode() && !dragon.isVehicle() && !leavesToFollow(dragon.position(), ownerPosition());
     }
 
     @Override
     public void start() {
         dragon.setSwimMode(true);
-        swimTicksLeft = MIN_SWIM_TICKS + dragon.getRandom().nextInt(MAX_SWIM_TICKS - MIN_SWIM_TICKS);
+        swimTicksLeft = stats().roamMinTicks() + dragon.getRandom().nextInt(Math.max(1, stats().roamMaxTicks() - stats().roamMinTicks()));
         stuckTicks = 0;
         stuckRetargets = 0;
         lastPos = dragon.position();
@@ -79,9 +79,10 @@ public class DragonRoamSwimGoal extends Goal {
 
     @Override
     public void stop() {
-        dragon.setSwimMode(false);
+        // Handing over to the follow goal keeps it swimming rather than dropping out of swim mode for a tick
+        if (!leavesToFollow(dragon.position(), ownerPosition())) dragon.setSwimMode(false);
         target = null;
-        restTicksLeft = MIN_REST_TICKS + dragon.getRandom().nextInt(MAX_REST_TICKS - MIN_REST_TICKS);
+        restTicksLeft = stats().restMinTicks() + dragon.getRandom().nextInt(Math.max(1, stats().restMaxTicks() - stats().restMinTicks()));
     }
 
     @Override
@@ -149,16 +150,36 @@ public class DragonRoamSwimGoal extends Goal {
             int surface = column.get().surfaceY();
             double y = Mth.nextDouble(dragon.getRandom(), floor + 1, surface);
             Vec3 candidate = new Vec3(ahead.x, y, ahead.z);
-            if (isAllowed(candidate) && hasClearLine(candidate)) return candidate;
+            if (isAllowed(candidate) && isNearOwner(candidate, ownerPosition()) && hasClearLine(candidate)) return candidate;
         }
         return null;
     }
 
+    private SwimStats stats() {
+        return dragon.getStats().swim();
+    }
+
     private Vec3 pointAhead(float halfAngle) {
         float yaw = dragon.getYRot() + Mth.nextFloat(dragon.getRandom(), -halfAngle, halfAngle);
-        double distance = Mth.nextDouble(dragon.getRandom(), MIN_TARGET_DISTANCE, MAX_TARGET_DISTANCE);
+        double distance = Mth.nextDouble(dragon.getRandom(), stats().roamMinDistance(), stats().roamMaxDistance());
         double radians = Math.toRadians(yaw);
         return dragon.position().add(-Math.sin(radians) * distance, 0, Math.cos(radians) * distance);
+    }
+
+    @Nullable
+    private Vec3 ownerPosition() {
+        LivingEntity owner = dragon.getFollowedOwner();
+        return owner != null ? owner.position() : null;
+    }
+
+    /** Anywhere will do with no owner to follow; otherwise within NEAR_OWNER of them. */
+    static boolean isNearOwner(Vec3 spot, @Nullable Vec3 owner) {
+        return owner == null || spot.distanceToSqr(owner) <= NEAR_OWNER * NEAR_OWNER;
+    }
+
+    /** True once a following dragon's owner is far enough off that it should stop idling and go after them. */
+    static boolean leavesToFollow(Vec3 dragon, @Nullable Vec3 owner) {
+        return owner != null && dragon.distanceToSqr(owner) > FOLLOW_DISTANCE * FOLLOW_DISTANCE;
     }
 
     private boolean isAllowed(Vec3 pos) {

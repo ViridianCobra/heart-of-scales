@@ -57,6 +57,12 @@ Add anything new you hit.
 - `NetworkHooks.openScreen(player, provider, writer)` becomes `player.openMenu(provider, writer)`.
 - `TamableAnimal#setTame(boolean)` becomes `setTame(boolean, boolean applyTamingSideEffects)`.
 - `canBreatheUnderwater` is final. Override `canDrownInFluidType(FluidType)` instead.
+- `onRemovedFromWorld` becomes `onRemovedFromLevel`, like `onAddedToLevel`. `getRemovalReason` keeps its name.
+- `Attributes.X` constants are `Holder<Attribute>`, so a helper that takes an attribute takes a `Holder<Attribute>`.
+- `ForgeHooks.onLivingJump` becomes `CommonHooks.onLivingJump`. `PlayerRideableJumping` is unchanged.
+- `BlockPathTypes` becomes `PathType`. `WalkNodeEvaluator.getBlockPathTypeStatic(level, pos)` becomes
+  `getPathTypeStatic(mob, pos)`, which copies the position itself, so no `pos.mutable()` is needed.
+- `NbtUtils.writeBlockPos` writes an int array. To keep reading a 1.20.1 save, write `X`, `Y` and `Z` ints yourself (see `RosterEntry`).
 - Riding offsets: `getPassengersRidingOffset` becomes `getPassengerAttachmentPoint(entity, dimensions, partialTick)` returning a `Vec3`,
   and `passenger.getMyRidingOffset()` becomes `-passenger.getVehicleAttachmentPoint(this).y`. A player's vehicle attachment is 0.6 where the
   1.20.1 riding offset was 0.35, so the saddle point gains 0.25 to sit the rider where it did (`DragonEntity.SEAT_ADJUST`).
@@ -93,10 +99,25 @@ This is the largest change.
 - `AbstractContainerScreen#render` already draws the background; drop the explicit `renderBackground(graphics)` call.
 - `InventoryScreen.renderEntityInInventoryFollowsMouse` takes a box `(x1, y1, x2, y2)`, scale, y offset and the raw mouse position. Use the
   horse screen's numbers: `(left + 26, top + 18, left + 78, top + 70, 17, 0.25f, mouseX, mouseY, entity)`.
+  It already clips to that box, so drop any `enableScissor` around it.
+- Selection lists (`AbstractSelectionList`) are widgets: the constructor is `(minecraft, width, height, y, itemHeight)` with the list's own
+  height, then `setX`. `x0` and `x1` become `getX()` and `getRight()`. `setRenderBackground(false)`, `setRenderTopAndBottom(false)` and
+  `setRenderSelection(false)` are gone; override `renderListBackground`, `renderListSeparators` and `renderSelection` with empty bodies.
+  Rows are still drawn 2px right of where they are hit-tested.
 - Curios 9: `CuriosApi.getCuriosInventory` returns a plain `Optional`.
 - GeckoLib 4.9: `software.bernie.geckolib.core.animation.*` becomes `software.bernie.geckolib.animation.*`,
   `core.animatable.instance.AnimatableInstanceCache` becomes `animatable.instance.AnimatableInstanceCache`, `core.object.Color` becomes `util.Color`.
   The five-argument `applyRotations` is deprecated in favour of a six-argument overload with a trailing `nativeScale`.
+  `core.animatable.model.CoreGeoBone` becomes `cache.object.GeoBone`.
+
+## Dragon beacon roster
+- `DragonBeaconBlock.use` moves to `useWithoutItem`. Add `useItemOn` returning `SKIP_DEFAULT_BLOCK_INTERACTION` while holding the staff,
+  so the staff's `useOn` still assigns homes, and `PASS_TO_DEFAULT_BLOCK_INTERACTION` otherwise.
+- `DragonRoster`: `computeIfAbsent` takes a `SavedData.Factory`, and `load`/`save` take a `HolderLookup.Provider`.
+  `Component.Serializer.toJson`/`fromJson` in `RosterEntry` need that provider too.
+- Menu extra data is a `RegistryFriendlyByteBuf`. `BeaconRow` encodes components with `ComponentSerialization.TRUSTED_STREAM_CODEC`
+  (`TRUSTED_OPTIONAL_STREAM_CODEC` for the nullable death message), and `encodedSize` needs a `RegistryAccess` to build its buffer.
+  NeoForge's `openMenu` also caps extra data at 32600 bytes, so `BeaconRows` keeps its budget.
 
 ## Data folder names
 - `loot_tables` to `loot_table`, `recipes` to `recipe`, `tags/items` to `tags/item`, `tags/blocks` to `tags/block`.

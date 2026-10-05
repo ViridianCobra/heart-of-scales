@@ -1,7 +1,8 @@
 package net.basilisk.heartofscales.entity.ai;
 
+import net.basilisk.heartofscales.entity.DragonEntity;
+import net.basilisk.heartofscales.species.stats.SwimStats;
 import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.control.MoveControl;
 import net.minecraft.world.phys.Vec3;
 
@@ -11,13 +12,14 @@ import net.minecraft.world.phys.Vec3;
  * ratio of forward to vertical input matters. Gravity is owned by DragonEntity.setSwimMode.
  */
 public class DragonSwimMoveControl extends MoveControl {
-    private static final float MAX_YAW_TURN = 5.0f;
-    private static final float MAX_PITCH_TURN = 10.0f;
     private static final double CLIMB_FULL_STRENGTH_DISTANCE = 4.0;
     private static final double REACHED_DISTANCE_SQR = 1.0;
 
-    public DragonSwimMoveControl(Mob mob) {
-        super(mob);
+    private final DragonEntity dragon;
+
+    public DragonSwimMoveControl(DragonEntity dragon) {
+        super(dragon);
+        this.dragon = dragon;
     }
 
     @Override
@@ -37,8 +39,9 @@ public class DragonSwimMoveControl extends MoveControl {
             return;
         }
 
+        SwimStats swim = dragon.getStats().swim();
         float wantedYaw = (float) (Mth.atan2(dz, dx) * Mth.RAD_TO_DEG) - 90.0f;
-        float yaw = rotlerp(mob.getYRot(), wantedYaw, MAX_YAW_TURN);
+        float yaw = rotlerp(mob.getYRot(), wantedYaw, swim.aiMaxYawTurn());
         mob.setYRot(yaw);
         mob.yBodyRot = yaw;
         mob.yHeadRot = yaw;
@@ -46,7 +49,7 @@ public class DragonSwimMoveControl extends MoveControl {
         Vec3 velocity = mob.getDeltaMovement();
         double horizontalSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
         float wantedPitch = (float) -(Mth.atan2(velocity.y, horizontalSpeed) * Mth.RAD_TO_DEG);
-        mob.setXRot(rotlerp(mob.getXRot(), wantedPitch, MAX_PITCH_TURN));
+        mob.setXRot(rotlerp(mob.getXRot(), wantedPitch, swim.aiMaxPitchTurn()));
 
         mob.setSpeed(1.0f);
         mob.setYya((float) Mth.clamp(dy / CLIMB_FULL_STRENGTH_DISTANCE, -1.0, 1.0));

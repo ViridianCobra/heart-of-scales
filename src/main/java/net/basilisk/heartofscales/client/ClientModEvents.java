@@ -6,6 +6,7 @@ import net.basilisk.heartofscales.block.entity.NestBlockEntity;
 import net.basilisk.heartofscales.client.entity.DragonRenderer;
 import net.basilisk.heartofscales.client.hud.DragonScaleOverlay;
 import net.basilisk.heartofscales.client.hud.FlightSpeedOverlay;
+import net.basilisk.heartofscales.client.screen.DragonBeaconScreen;
 import net.basilisk.heartofscales.client.screen.DragonScreen;
 import net.basilisk.heartofscales.genome.DragonGenome;
 import net.basilisk.heartofscales.item.DragonEggItem;
@@ -57,6 +58,7 @@ public final class ClientModEvents {
     @SubscribeEvent
     public static void registerScreens(RegisterMenuScreensEvent event) {
         event.register(ModMenuTypes.DRAGON.get(), DragonScreen::new);
+        event.register(ModMenuTypes.DRAGON_BEACON.get(), DragonBeaconScreen::new);
     }
 
     @SubscribeEvent

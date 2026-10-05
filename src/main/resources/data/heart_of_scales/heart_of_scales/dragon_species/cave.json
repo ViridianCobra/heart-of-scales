@@ -1,7 +1,8 @@
 {
   "species": "land",
+  "glides": true,
   "egg_tint": "#5A4E6B",
   "foods": "heart_of_scales:dragon-food/land",
-  "favourite_food": "minecraft:cooked_mutton",
+  "favourite_food": "heart_of_scales:cave-chow",
   "hatch_condition": "dark"
 }

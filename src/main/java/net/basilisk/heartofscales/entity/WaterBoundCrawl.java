@@ -23,7 +23,8 @@ public final class WaterBoundCrawl {
     public static void tick(DragonEntity dragon) {
         AttributeInstance speed = dragon.getAttribute(Attributes.MOVEMENT_SPEED);
         if (speed == null) return;
-        boolean shouldCrawl = dragon.canSwim() && !dragon.isInWater() && !dragon.isInSwimMode();
+        // Following its owner it keeps pace on land; only an idle water dragon is held back
+        boolean shouldCrawl = dragon.canSwim() && !dragon.isInWater() && !dragon.isInSwimMode() && dragon.getFollowedOwner() == null;
         boolean crawling = speed.hasModifier(MODIFIER_ID);
         if (shouldCrawl && !crawling) speed.addTransientModifier(CRAWL);
         if (!shouldCrawl && crawling) speed.removeModifier(MODIFIER_ID);
