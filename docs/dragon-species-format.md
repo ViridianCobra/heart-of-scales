@@ -23,6 +23,7 @@ Datapack registries load once when a world opens. Edits need the world reopened,
 |---|---|---|
 | `flies` | `false` | Can take off from the ground and be flown in free flight. |
 | `glides` | `false` | Has glide mode. With `flies` too, the flight mode key switches between the two. Alone, the dragon cannot take off but opens its wings after a fall. |
+| `jumps` | `false` | Ridden out of flight, Space jumps like a horse: hold it to fill the jump bar, release to jump, higher the fuller the bar. Ignored with `flies` on, where Space takes off. Height and push are in `stats.jump`. |
 | `swims` | `false` | Roams in water, crawls on land, breathes underwater. |
 | `stats` | all defaults | Tuning numbers, see below. |
 
@@ -149,6 +150,24 @@ turn rates in degrees per tick. A "factor" multiplies something else. A "respons
       "range_down": 3,
       "range_up": 17,
       "check_interval_ticks": 20
+    },
+    "jump": {
+      "height": 5.0,
+      "forward_push": 0.4
+    },
+    "breath": {
+      "damage": 3.0,
+      "range": 8.0,
+      "width": 3.0,
+      "rate_ticks": 10,
+      "push": 0.8,
+      "meter": {
+        "max": 100.0,
+        "drain_seconds": 5.0,
+        "regen": 0.5,
+        "regen_delay_ticks": 20,
+        "recovered_fraction": 0.25
+      }
     }
   }
 }
@@ -225,7 +244,7 @@ Ridden free flight, the render lean, free cam, and the AI's own flying.
 | `ai_max_yaw_turn` | AI flight: yaw turn per tick. |
 | `ai_max_pitch_turn` | AI flight: pitch turn per tick. |
 | `ai_roll_per_yaw_degree` | AI flight: degrees of lean into a turn per degree of yaw turned that tick, capped at `max_roll` and eased by `roll_smoothing`. The ridden equivalent is `roll_per_yaw_degree`. |
-| `roam_takeoff_chance` | Each tick on the ground an idle dragon has a 1 in this chance to take off. A wild dragon flies around where it first appeared, a dragon told to Wander around its beacon, and a following dragon around its owner, only taking off on its own with them within 16 blocks. A following dragon also takes off straight away to catch up when its owner is more than 24 blocks away or 6 above it. Following dragons never teleport. |
+| `roam_takeoff_chance` | Each tick on the ground an idle dragon has a 1 in this chance to take off. A wild dragon flies around where it first appeared, a dragon told to Wander around its beacon, and a following dragon around its owner, only taking off on its own with them within 16 blocks. A following dragon also takes off straight away to catch up when its owner is more than 24 blocks away or 6 above it. A following dragon only teleports when it has made no headway toward its owner for 10 seconds, or when it is about to fall outside the simulation distance and freeze; it reappears 16 to 24 blocks away, behind its owner where it can, and only where its whole body fits clear of blocks and liquid. |
 | `wander_radius`, `owner_wander_radius` | How far an idle flight meanders from its centre before it is pulled back, from home or beacon and from an owner. Flight turns smoothly at up to 60% of `ai_max_yaw_turn`. Well past the radius it flies straight back, faster the further out it is, up to double `ai_speed_factor`: how a following dragon catches up. |
 | `wander_min_ticks`, `wander_max_ticks` | How long an idle flight lasts before it lands near its centre. It keeps flying while still catching up, or while its owner is in the air. |
 | `cruise_min_height`, `cruise_max_height` | Blocks above the highest ground or treetop under the dragon and up to 16 blocks ahead of it that a flight is flown at, swelling up and down by 4. Never less than 4 above a following dragon's owner. Picked once per flight. Now and then a flight swoops down to 4 above the ground and climbs back. |
@@ -264,6 +283,10 @@ factors multiply the ridden cruise speed.
 AI swimming pushes itself by `accel` each tick and is slowed by `drag`, settling at `accel * drag / (1 - drag)`
 blocks per tick. Ridden swimming cruises at that same speed.
 
+A following water dragon only roams, and only looks for water, within 8 blocks of its owner. Once the owner is more than
+10 blocks away it swims straight after them through deep water, climbing out at the bank if they are on land, and
+while following it moves at full speed on land instead of the usual water-bound crawl.
+
 | field | meaning |
 |---|---|
 | `accel` | Push per tick. |
@@ -285,3 +308,31 @@ and land back inside the box.
 | `range_horizontal` | Blocks either side of the beacon. |
 | `range_down`, `range_up` | Blocks below and above the beacon. |
 | `check_interval_ticks` | How often it checks the beacon still exists. |
+
+### jump
+
+Only used with `jumps` on and `flies` off. A Jump Boost effect adds to the jump and honey blocks damp it, as for horses.
+The jump's way down counts toward a glider's `glide.auto_deploy_fall`, so a full jump on flat ground opens the wings
+briefly near the ground, and a jump off a ledge glides.
+
+| field | meaning |
+|---|---|
+| `height` | Blocks a full jump bar reaches. Less charge jumps lower: a tap reaches about a fifth of it. |
+| `forward_push` | Speed added along the heading on a full bar while W is held, blocks per tick. Less with less charge. |
+
+### breath
+
+The rider holds Dragon Breath (R) to breathe at whatever their crosshair is on. Every breath does damage. Air and water
+are streams that hit everything in a cone; air lifts what it hits and water drives it down. Rock is a dust stream with
+rocks in it; only the rocks hit, one target each. A value that is out of range, or a `type` that does not exist, is
+ignored and the default used.
+
+| field | meaning |
+|---|---|
+| `type` | `rock`, `air` or `water`. Leave it out and the species group decides: land is rock, air is air, water is water. |
+| `damage` | Damage per hit: each stream pulse, or each rock. |
+| `range` | Reach in blocks, at least 0.5. Rocks are removed after flying this far. |
+| `width` | Width in blocks at full range. For a stream, how wide the cone is; for rock, how far the rocks scatter. |
+| `rate_ticks` | Ticks between stream pulses, or between rocks. At least 1. |
+| `push` | How hard a stream shoves. Rock ignores it and knocks back like a normal hit. |
+| `meter` | The breath bar, drawn under the stamina bar. Same fields and rules as `stamina`; `drain_seconds` is how long a full bar of breath lasts. |
