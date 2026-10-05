@@ -9,19 +9,22 @@ import java.util.function.Supplier;
 
 /**
  * Rider -> server. Vanilla already syncs the rider's look and WASD; this carries the inputs it does not:
- * whether ascend, descend and sprint are held, whether free cam is on, and a request to toggle the flight mode.
+ * whether ascend, descend, sprint and jump are held, whether free cam is on, and a request to toggle the flight mode.
  */
-public record RiderInputPacket(boolean ascending, boolean descending, boolean freeCam, boolean sprinting, boolean toggleMode) {
+public record RiderInputPacket(boolean ascending, boolean descending, boolean freeCam, boolean sprinting, boolean jumping,
+                               boolean toggleMode) {
     public static void encode(RiderInputPacket packet, FriendlyByteBuf buf) {
         buf.writeBoolean(packet.ascending);
         buf.writeBoolean(packet.descending);
         buf.writeBoolean(packet.freeCam);
         buf.writeBoolean(packet.sprinting);
+        buf.writeBoolean(packet.jumping);
         buf.writeBoolean(packet.toggleMode);
     }
 
     public static RiderInputPacket decode(FriendlyByteBuf buf) {
-        return new RiderInputPacket(buf.readBoolean(), buf.readBoolean(), buf.readBoolean(), buf.readBoolean(), buf.readBoolean());
+        return new RiderInputPacket(buf.readBoolean(), buf.readBoolean(), buf.readBoolean(), buf.readBoolean(), buf.readBoolean(),
+                buf.readBoolean());
     }
 
     public static void handle(RiderInputPacket packet, Supplier<NetworkEvent.Context> context) {
@@ -34,6 +37,7 @@ public record RiderInputPacket(boolean ascending, boolean descending, boolean fr
             dragon.setRiderDescending(packet.descending);
             dragon.setRiderFreeCam(packet.freeCam);
             dragon.setRiderSprinting(packet.sprinting);
+            dragon.setRiderJumping(packet.jumping);
             if (packet.toggleMode) dragon.toggleFlightMode(sender);
         });
         context.get().setPacketHandled(true);

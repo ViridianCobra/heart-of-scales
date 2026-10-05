@@ -9,9 +9,9 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
  * docs/dragon-species-format.md has a complete example and describes every field.
  */
 public record DragonStats(AttributeStats attributes, StaminaStats stamina, TamingStats taming, GroundStats ground,
-                          FlightStats flight, GlideStats glide, SwimStats swim, HomeStats home) {
+                          FlightStats flight, GlideStats glide, SwimStats swim, HomeStats home, JumpStats jump) {
     public static final DragonStats DEFAULT = new DragonStats(AttributeStats.DEFAULT, StaminaStats.DEFAULT, TamingStats.DEFAULT,
-            GroundStats.DEFAULT, FlightStats.DEFAULT, GlideStats.DEFAULT, SwimStats.DEFAULT, HomeStats.DEFAULT);
+            GroundStats.DEFAULT, FlightStats.DEFAULT, GlideStats.DEFAULT, SwimStats.DEFAULT, HomeStats.DEFAULT, JumpStats.DEFAULT);
 
     public static final Codec<DragonStats> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             AttributeStats.CODEC.optionalFieldOf("attributes", AttributeStats.DEFAULT).forGetter(DragonStats::attributes),
@@ -21,6 +21,7 @@ public record DragonStats(AttributeStats attributes, StaminaStats stamina, Tamin
             FlightStats.CODEC.optionalFieldOf("flight", FlightStats.DEFAULT).forGetter(DragonStats::flight),
             GlideStats.CODEC.optionalFieldOf("glide", GlideStats.DEFAULT).forGetter(DragonStats::glide),
             SwimStats.CODEC.optionalFieldOf("swim", SwimStats.DEFAULT).forGetter(DragonStats::swim),
-            HomeStats.CODEC.optionalFieldOf("home", HomeStats.DEFAULT).forGetter(DragonStats::home)
+            HomeStats.CODEC.optionalFieldOf("home", HomeStats.DEFAULT).forGetter(DragonStats::home),
+            JumpStats.CODEC.optionalFieldOf("jump", JumpStats.DEFAULT).forGetter(DragonStats::jump)
     ).apply(instance, DragonStats::new));
 }

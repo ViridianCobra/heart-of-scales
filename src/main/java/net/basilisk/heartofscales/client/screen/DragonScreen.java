@@ -28,8 +28,11 @@ public class DragonScreen extends AbstractContainerScreen<DragonMenu> {
         int top = (height - imageHeight) / 2;
         graphics.blit(HORSE_INVENTORY, left, top, 0, 0, imageWidth, imageHeight);
         graphics.blit(HORSE_INVENTORY, left + 7, top + 17, SADDLE_SPRITE_U, imageHeight + 54, SLOT_SPRITE_SIZE, SLOT_SPRITE_SIZE);
+        // Clipped to the black preview box, which a long-necked body would otherwise spill over
+        graphics.enableScissor(left + 26, top + 18, left + 78, top + 70);
         InventoryScreen.renderEntityInInventoryFollowsMouse(graphics, left + 51, top + 60, ENTITY_SCALE,
                 (left + 51) - this.mouseX, (top + 75 - 50) - this.mouseY, menu.getDragon());
+        graphics.disableScissor();
     }
 
     @Override

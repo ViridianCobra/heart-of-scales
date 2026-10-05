@@ -17,10 +17,10 @@ import net.minecraftforge.registries.ForgeRegistries;
  * One subspecies, loaded from data/<ns>/heart_of_scales/dragon_species/<name>.json.
  * Every field, its default and what it does is listed in docs/dragon-species-format.md.
  */
-public record DragonSpecies(SpeciesGroup species, boolean flies, boolean glides, boolean swims, int eggTint, TagKey<Item> foods, Item favouriteFood,
-                            HatchCondition hatchCondition, DragonStats stats) {
+public record DragonSpecies(SpeciesGroup species, boolean flies, boolean glides, boolean jumps, boolean swims, int eggTint,
+                            TagKey<Item> foods, Item favouriteFood, HatchCondition hatchCondition, DragonStats stats) {
     /** Stands in for a subspecies no datapack defines, so a dragon whose species was removed keeps working. */
-    public static final DragonSpecies DEFAULT = new DragonSpecies(SpeciesGroup.LAND, false, false, false, 0xFFFFFF,
+    public static final DragonSpecies DEFAULT = new DragonSpecies(SpeciesGroup.LAND, false, false, false, false, 0xFFFFFF,
             TagKey.create(Registries.ITEM, ResourceLocation.fromNamespaceAndPath(HeartOfScales.MOD_ID, "dragon-food/land")),
             Items.COOKED_BEEF, HatchCondition.DIM, DragonStats.DEFAULT);
 
@@ -46,6 +46,7 @@ public record DragonSpecies(SpeciesGroup species, boolean flies, boolean glides,
             SpeciesGroup.CODEC.fieldOf("species").forGetter(DragonSpecies::species),
             Codec.BOOL.optionalFieldOf("flies", false).forGetter(DragonSpecies::flies),
             Codec.BOOL.optionalFieldOf("glides", false).forGetter(DragonSpecies::glides),
+            Codec.BOOL.optionalFieldOf("jumps", false).forGetter(DragonSpecies::jumps),
             Codec.BOOL.optionalFieldOf("swims", false).forGetter(DragonSpecies::swims),
             HEX_COLOUR.fieldOf("egg_tint").forGetter(DragonSpecies::eggTint),
             TagKey.codec(Registries.ITEM).fieldOf("foods").forGetter(DragonSpecies::foods),
