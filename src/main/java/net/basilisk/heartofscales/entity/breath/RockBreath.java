@@ -15,7 +15,9 @@ import net.minecraft.world.phys.Vec3;
 public final class RockBreath implements Breath {
     /** Blocks per tick on top of the dragon's own speed. Slow enough to see the rock leave. */
     private static final float ROCK_SPEED = 1.2f;
-    private static final int DUST_PER_TICK = 4;
+    private static final int DUST_PER_TICK = 5;
+    /** How wide the dust spreads at full range. Separate from the species' width, which sets how far rocks scatter. */
+    private static final double DUST_WIDTH = 5.0;
 
     @Override
     public void tickServer(DragonEntity dragon, BreathStats stats, BreathAim aim, int breathTicks) {
@@ -34,6 +36,6 @@ public final class RockBreath implements Breath {
 
     @Override
     public void tickClient(DragonEntity dragon, BreathStats stats, BreathAim aim) {
-        BreathParticles.stream(dragon, stats, aim, DUST_PER_TICK, ModParticles.DUST_BREATH.get());
+        BreathParticles.stream(dragon, aim, stats.range(), DUST_WIDTH, DUST_PER_TICK, ModParticles.DUST_BREATH.get());
     }
 }

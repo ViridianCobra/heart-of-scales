@@ -7,10 +7,7 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -24,7 +21,7 @@ public final class StreamBreath implements Breath {
         Vec3 of(Vec3 direction, double strength);
     }
 
-    private static final int PARTICLES_PER_TICK = 6;
+    private static final int PARTICLES_PER_TICK = 8;
 
     private final Push push;
     private final SoundEvent sound;
@@ -40,14 +37,8 @@ public final class StreamBreath implements Breath {
     public void tickServer(DragonEntity dragon, BreathStats stats, BreathAim aim, int breathTicks) {
         if (breathTicks % stats.rateTicks() != 0) return;
         Level level = dragon.level();
-        Vec3 origin = aim.origin();
-        double reach = aim.reach(stats.range());
-        AABB area = new AABB(origin, origin.add(aim.direction().scale(reach))).inflate(stats.width() / 2.0 + 1.0);
         Entity attacker = BreathDamage.attacker(dragon);
-        for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, area, e -> BreathTargets.canHit(dragon, e))) {
-            Vec3 centre = target.getBoundingBox().getCenter();
-            if (!BreathCone.contains(origin, aim.direction(), reach, stats.width(), centre, target.getBbWidth() / 2.0)) continue;
-            if (!canReach(level, dragon, origin, centre)) continue;
+        for (LivingEntity target : BreathTargets.inCone(level, dragon, stats, aim)) {
             Vec3 before = target.getDeltaMovement();
             if (!BreathDamage.hit(attacker, dragon, target, stats.damage())) continue;
             // The push replaces the knockback the hit just gave, and heavy mobs shrug it off the same way
@@ -62,11 +53,6 @@ public final class StreamBreath implements Breath {
 
     @Override
     public void tickClient(DragonEntity dragon, BreathStats stats, BreathAim aim) {
-        BreathParticles.stream(dragon, stats, aim, PARTICLES_PER_TICK, particles);
-    }
-
-    private static boolean canReach(Level level, DragonEntity dragon, Vec3 from, Vec3 to) {
-        ClipContext context = new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, dragon);
-        return level.clip(context).getType() == HitResult.Type.MISS;
+        BreathParticles.stream(dragon, aim, stats.range(), stats.width(), PARTICLES_PER_TICK, particles);
     }
 }

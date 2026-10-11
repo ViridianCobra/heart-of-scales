@@ -65,6 +65,7 @@ public final class ClientModEvents {
 
     @SubscribeEvent
     public static void registerParticleProviders(RegisterParticleProvidersEvent event) {
+        event.registerSpriteSet(ModParticles.AIR_BREATH.get(), sprites -> new BreathCloudParticle.Provider(sprites, 0.95f, 0.97f, 1.0f));
         event.registerSpriteSet(ModParticles.WATER_BREATH.get(), sprites -> new BreathCloudParticle.Provider(sprites, 0.35f, 0.6f, 1.0f));
         event.registerSpriteSet(ModParticles.DUST_BREATH.get(), sprites -> new BreathCloudParticle.Provider(sprites, 0.55f, 0.48f, 0.4f));
     }

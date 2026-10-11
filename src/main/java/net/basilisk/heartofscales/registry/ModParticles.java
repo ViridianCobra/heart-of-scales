@@ -12,6 +12,8 @@ public final class ModParticles {
     public static final DeferredRegister<ParticleType<?>> PARTICLE_TYPES =
             DeferredRegister.create(ForgeRegistries.PARTICLE_TYPES, HeartOfScales.MOD_ID);
 
+    public static final RegistryObject<SimpleParticleType> AIR_BREATH =
+            PARTICLE_TYPES.register("air-breath", () -> new SimpleParticleType(false));
     public static final RegistryObject<SimpleParticleType> WATER_BREATH =
             PARTICLE_TYPES.register("water-breath", () -> new SimpleParticleType(false));
     public static final RegistryObject<SimpleParticleType> DUST_BREATH =

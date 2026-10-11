@@ -111,7 +111,9 @@ public final class DragonBreath {
      * vanilla already syncs, so the server and every client agree.
      */
     public BreathAim aim() {
-        if (dragon.getControllingPassenger() instanceof Player rider) return aimAt(crosshairTarget(rider));
+        if (dragon.getControllingPassenger() instanceof Player rider) {
+            return aimAt(crosshairTarget(rider, rider.getEyePosition(), rider.getLookAngle()));
+        }
         return new BreathAim(headPoint(0.0), headPoint(MOUTH_FORWARD), facing());
     }
 
@@ -123,10 +125,12 @@ public final class DragonBreath {
         return new BreathAim(origin, headPoint(MOUTH_FORWARD), BreathCone.clampDirection(direction, facing, MAX_AIM_DEGREES));
     }
 
-    /** The first mob or block along the rider's look, or the far end of the breath's reach. */
-    private Vec3 crosshairTarget(Player rider) {
-        Vec3 eye = rider.getEyePosition();
-        Vec3 end = eye.add(rider.getLookAngle().scale(stats().range() + CROSSHAIR_EXTRA_REACH));
+    /**
+     * The first mob or block along {@code look} from {@code eye}, or the far end of the breath's reach. The camera calls this
+     * too, with the eye and look it renders from, so it can keep the crosshair on the same point.
+     */
+    public Vec3 crosshairTarget(Player rider, Vec3 eye, Vec3 look) {
+        Vec3 end = eye.add(look.scale(stats().range() + CROSSHAIR_EXTRA_REACH));
         HitResult block = dragon.level().clip(new ClipContext(eye, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, rider));
         if (block.getType() != HitResult.Type.MISS) end = block.getLocation();
         AABB area = rider.getBoundingBox().expandTowards(end.subtract(eye)).inflate(1.0);

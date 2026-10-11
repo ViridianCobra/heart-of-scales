@@ -3,6 +3,7 @@ package net.basilisk.heartofscales.client;
 import net.basilisk.heartofscales.HeartOfScales;
 import net.basilisk.heartofscales.entity.DragonEntity;
 import net.basilisk.heartofscales.entity.FlightMode;
+import net.basilisk.heartofscales.entity.breath.DragonBreath;
 import net.basilisk.heartofscales.network.ModNetwork;
 import net.basilisk.heartofscales.network.RiderInputPacket;
 import net.minecraft.client.CameraType;
@@ -116,6 +117,11 @@ public final class RiderInputHandler {
             pitch += Math.min(STALL_ASSIST_RATE * ticks, STALL_ASSIST_PITCH - player.getXRot());
         }
         if (pitch != 0) player.turn(0, pitch / TURN_SCALE);
+    }
+
+    /** Whether the local rider is breathing, judged from their key so it is known before the server says so. */
+    public static boolean isBreathHeld(DragonBreath breath) {
+        return ModKeyMappings.BREATHE.isDown() && !breath.isExhausted() && breath.meterFraction() > 0.0f;
     }
 
     /**

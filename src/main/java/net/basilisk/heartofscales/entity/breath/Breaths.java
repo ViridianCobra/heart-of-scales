@@ -10,7 +10,7 @@ public final class Breaths {
     public static final Breath ROCK = new RockBreath();
     public static final Breath AIR = new StreamBreath(
             (direction, strength) -> new Vec3(direction.x * 0.3, 0.6, direction.z * 0.3).scale(strength),
-            SoundEvents.ENDER_DRAGON_FLAP, ParticleTypes.POOF, ParticleTypes.CLOUD);
+            SoundEvents.ENDER_DRAGON_FLAP, ModParticles.AIR_BREATH.get());
     public static final Breath WATER = new StreamBreath(
             (direction, strength) -> new Vec3(direction.x * 0.5, -1.0, direction.z * 0.5).scale(strength),
             SoundEvents.BUCKET_EMPTY, ModParticles.WATER_BREATH.get(), ModParticles.WATER_BREATH.get(), ParticleTypes.FISHING);

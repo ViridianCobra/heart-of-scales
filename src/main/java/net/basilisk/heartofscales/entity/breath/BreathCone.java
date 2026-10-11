@@ -48,4 +48,15 @@ public final class BreathCone {
         return direction.add(random.nextGaussian() * spread, random.nextGaussian() * spread, random.nextGaussian() * spread)
                 .normalize();
     }
+
+    /** A random offset up to {@code radius} blocks out from the line along {@code direction}, square to it. */
+    public static Vec3 disc(Vec3 direction, double radius, RandomSource random) {
+        // Crossing with straight up gives nothing when the direction is near vertical
+        Vec3 side = direction.cross(Math.abs(direction.y) < 0.99 ? new Vec3(0.0, 1.0, 0.0) : new Vec3(1.0, 0.0, 0.0)).normalize();
+        Vec3 up = direction.cross(side);
+        double angle = random.nextDouble() * Math.PI * 2.0;
+        // The square root spreads points evenly over the disc instead of bunching them at the centre
+        double distance = radius * Math.sqrt(random.nextDouble());
+        return side.scale(Math.cos(angle) * distance).add(up.scale(Math.sin(angle) * distance));
+    }
 }
