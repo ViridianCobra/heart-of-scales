@@ -69,6 +69,8 @@ This is the largest change.
 ## Dragon breath
 - `BreathCloudParticle` overrides Forge's `shouldCull()`, which NeoForge doesn't have. Override `getRenderBoundingBox(float)` to return an inflated or infinite box instead, or grown puffs pop out at the screen edges.
 - `TickEvent.ClientTickEvent` with `phase == END` becomes `ClientTickEvent.Post`. `ForgeConfigSpec` becomes `ModConfigSpec`.
+- `RiderMouthPacket` becomes a `CustomPacketPayload` with a `StreamCodec`, registered next to the rider input payload. Bump the registrar version with it.
+- `DragonRenderer` tracks the `mouth` bone in `preRender` and reads it in `renderFinal`. GeckoLib for 1.21 passes the render colour as one packed int rather than four floats, so check both overrides' signatures against the branch's GeckoLib.
 
 ## Data folder names
 - `loot_tables` to `loot_table`, `recipes` to `recipe`, `tags/items` to `tags/item`, `tags/blocks` to `tags/block`.

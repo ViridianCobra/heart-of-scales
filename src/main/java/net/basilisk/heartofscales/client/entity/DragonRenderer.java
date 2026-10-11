@@ -1,17 +1,24 @@
 package net.basilisk.heartofscales.client.entity;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import net.basilisk.heartofscales.entity.DragonEntity;
 import net.basilisk.heartofscales.species.ModRegistries;
+import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Vector3d;
 import software.bernie.geckolib.cache.object.BakedGeoModel;
 import software.bernie.geckolib.core.object.Color;
 import software.bernie.geckolib.renderer.GeoEntityRenderer;
 
 public class DragonRenderer extends GeoEntityRenderer<DragonEntity> {
+    /** An empty bone at the mouth, where the breath leaves from. */
+    private static final String MOUTH_BONE = "mouth";
+
     public DragonRenderer(EntityRendererProvider.Context context) {
         super(context, new DragonModel());
         this.shadowRadius = 0.8f;
@@ -22,6 +29,28 @@ public class DragonRenderer extends GeoEntityRenderer<DragonEntity> {
                                     BakedGeoModel model, boolean isReRender, float partialTick, int packedLight, int packedOverlay) {
         float scale = dragon.getBodyScale();
         super.scaleModelForRender(widthScale * scale, heightScale * scale, poseStack, dragon, model, isReRender, partialTick, packedLight, packedOverlay);
+    }
+
+    @Override
+    public void preRender(PoseStack poseStack, DragonEntity dragon, BakedGeoModel model, MultiBufferSource bufferSource,
+                          VertexConsumer buffer, boolean isReRender, float partialTick, int packedLight, int packedOverlay,
+                          float red, float green, float blue, float alpha) {
+        super.preRender(poseStack, dragon, model, bufferSource, buffer, isReRender, partialTick, packedLight, packedOverlay,
+                red, green, blue, alpha);
+        model.getBone(MOUTH_BONE).ifPresent(bone -> bone.setTrackingMatrices(true));
+    }
+
+    /** Bones are shared by every dragon drawn with the same model, so the mouth is read straight after drawing each one. */
+    @Override
+    public void renderFinal(PoseStack poseStack, DragonEntity dragon, BakedGeoModel model, MultiBufferSource bufferSource,
+                            VertexConsumer buffer, float partialTick, int packedLight, int packedOverlay,
+                            float red, float green, float blue, float alpha) {
+        super.renderFinal(poseStack, dragon, model, bufferSource, buffer, partialTick, packedLight, packedOverlay,
+                red, green, blue, alpha);
+        model.getBone(MOUTH_BONE).ifPresent(bone -> {
+            Vector3d mouth = bone.getLocalPosition();
+            dragon.getBreath().setMouthOffset(new Vec3(mouth.x, mouth.y, mouth.z));
+        });
     }
 
     /** Pitch the whole body toward the flight or swim direction, turning about the body centre rather than the feet. */

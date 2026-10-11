@@ -6,11 +6,13 @@ import net.basilisk.heartofscales.entity.FlightMode;
 import net.basilisk.heartofscales.entity.breath.DragonBreath;
 import net.basilisk.heartofscales.network.ModNetwork;
 import net.basilisk.heartofscales.network.RiderInputPacket;
+import net.basilisk.heartofscales.network.RiderMouthPacket;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.event.TickEvent;
@@ -100,6 +102,9 @@ public final class RiderInputHandler {
             lastFreeCam = freeCam;
             lastJumping = jumping;
         }
+        // Unlike the keys, the mouth moves with the animations, so it is sent every tick
+        Vec3 mouth = dragon.getBreath().mouthOffset();
+        if (breathing && mouth != null) ModNetwork.CHANNEL.sendToServer(new RiderMouthPacket(mouth));
     }
 
     /**

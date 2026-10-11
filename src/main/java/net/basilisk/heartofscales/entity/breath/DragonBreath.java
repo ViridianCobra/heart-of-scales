@@ -20,8 +20,15 @@ import org.jetbrains.annotations.Nullable;
  * declared on DragonEntity, so it hands them in. The meter follows the same rules as sprint stamina.
  */
 public final class DragonBreath {
+    /** Where the mouth is assumed to be when the model has not given one: off screen, or a model without a mouth bone. */
     private static final double MOUTH_FORWARD = 1.5;
     private static final double MOUTH_HEIGHT = 1.6;
+    /** Hits are measured from this far behind the mouth, inside the head. */
+    private static final double ORIGIN_BEHIND_MOUTH = 1.5;
+    /** A mouth position older than this is from a dragon no longer being drawn. */
+    private static final int MOUTH_STALE_TICKS = 5;
+    /** How far past the model's reach a rider's mouth may be, for the client and server disagreeing a little on position. */
+    private static final double MOUTH_SLACK = 2.0;
     private static final double MAX_AIM_DEGREES = 60.0;
     /** The rider's eye sits behind the mouth, so the crosshair is followed this much past the breath's range. */
     private static final double CROSSHAIR_EXTRA_REACH = 4.0;
@@ -38,6 +45,9 @@ public final class DragonBreath {
     @Nullable
     private Vec3 lastPosition;
     private Vec3 movement = Vec3.ZERO;
+    @Nullable
+    private Vec3 mouthOffset;
+    private int mouthOffsetTick;
 
     public DragonBreath(DragonEntity dragon, EntityDataAccessor<Float> meterKey, EntityDataAccessor<Boolean> exhaustedKey,
                         EntityDataAccessor<Boolean> breathingKey) {
@@ -49,6 +59,24 @@ public final class DragonBreath {
 
     public void setRiderBreathing(boolean breathing) {
         this.riderBreathing = breathing;
+    }
+
+    /** Where the model's mouth bone was last drawn, relative to the dragon's position. */
+    public void setMouthOffset(Vec3 offset) {
+        this.mouthOffset = offset;
+        this.mouthOffsetTick = dragon.tickCount;
+    }
+
+    /** Server side: the mouth as the rider's client drew it, ignored if it is further out than the model reaches. */
+    public void setRiderMouth(Vec3 offset) {
+        double reach = dragon.getBody().reach() * dragon.getBodyScale() + MOUTH_SLACK;
+        if (dragon.getBoundingBox().inflate(reach).contains(dragon.position().add(offset))) setMouthOffset(offset);
+    }
+
+    /** The drawn mouth relative to the dragon, or null once the dragon has not been drawn for a while. */
+    @Nullable
+    public Vec3 mouthOffset() {
+        return mouthOffset != null && dragon.tickCount - mouthOffsetTick <= MOUTH_STALE_TICKS ? mouthOffset : null;
     }
 
     public BreathType type() {
@@ -113,15 +141,17 @@ public final class DragonBreath {
         if (dragon.getControllingPassenger() instanceof Player rider) {
             return aimAt(crosshairTarget(rider, rider.getEyePosition(), rider.getLookAngle()));
         }
-        return new BreathAim(headPoint(0.0), headPoint(MOUTH_FORWARD), facing());
+        Vec3 mouth = mouth();
+        return new BreathAim(originBehind(mouth), mouth, facing());
     }
 
     /** Aim at a point, kept within reach of the dragon's facing so the breath never goes back through its body. */
     public BreathAim aimAt(Vec3 target) {
-        Vec3 origin = headPoint(0.0);
+        Vec3 mouth = mouth();
+        Vec3 origin = originBehind(mouth);
         Vec3 facing = facing();
         Vec3 direction = BreathCone.towards(origin, target, facing);
-        return new BreathAim(origin, headPoint(MOUTH_FORWARD), BreathCone.clampDirection(direction, facing, MAX_AIM_DEGREES));
+        return new BreathAim(origin, mouth, BreathCone.clampDirection(direction, facing, MAX_AIM_DEGREES));
     }
 
     /**
@@ -138,14 +168,21 @@ public final class DragonBreath {
         return mob != null ? mob.getLocation() : end;
     }
 
-    /**
-     * A point in the head at mouth height, {@code forward} blocks ahead of the body's centre. The body only pitches in the
-     * air and water, so on the ground the head stays level.
-     */
-    private Vec3 headPoint(double forward) {
+    /** The model's mouth while the dragon is being drawn, else the assumed one. */
+    private Vec3 mouth() {
+        Vec3 offset = mouthOffset();
+        return offset != null ? dragon.position().add(offset) : assumedMouth();
+    }
+
+    private Vec3 originBehind(Vec3 mouth) {
+        return mouth.subtract(facing().scale(ORIGIN_BEHIND_MOUTH * dragon.getBodyScale()));
+    }
+
+    /** The body only pitches in the air and water, so on the ground the head stays level. */
+    private Vec3 assumedMouth() {
         double scale = dragon.getBodyScale();
         double pivot = dragon.getBody().pivotHeight() * scale;
-        return new Vec3(0.0, MOUTH_HEIGHT * scale - pivot, forward * scale)
+        return new Vec3(0.0, MOUTH_HEIGHT * scale - pivot, MOUTH_FORWARD * scale)
                 .xRot(-pitch() * Mth.DEG_TO_RAD)
                 .yRot(-dragon.getYRot() * Mth.DEG_TO_RAD)
                 .add(dragon.getX(), dragon.getY() + pivot, dragon.getZ());

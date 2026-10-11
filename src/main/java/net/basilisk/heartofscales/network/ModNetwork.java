@@ -7,7 +7,7 @@ import net.minecraftforge.network.NetworkRegistry;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class ModNetwork {
-    private static final String PROTOCOL_VERSION = "3";
+    private static final String PROTOCOL_VERSION = "4";
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             ResourceLocation.fromNamespaceAndPath(HeartOfScales.MOD_ID, "main"),
             () -> PROTOCOL_VERSION, PROTOCOL_VERSION::equals, PROTOCOL_VERSION::equals);
@@ -19,6 +19,11 @@ public final class ModNetwork {
                 .encoder(RiderInputPacket::encode)
                 .decoder(RiderInputPacket::decode)
                 .consumerMainThread(RiderInputPacket::handle)
+                .add();
+        CHANNEL.messageBuilder(RiderMouthPacket.class, nextId++, NetworkDirection.PLAY_TO_SERVER)
+                .encoder(RiderMouthPacket::encode)
+                .decoder(RiderMouthPacket::decode)
+                .consumerMainThread(RiderMouthPacket::handle)
                 .add();
     }
 
