@@ -4,5 +4,13 @@
   "egg_tint": "#5A4E6B",
   "foods": "heart_of_scales:dragon-food/land",
   "favourite_food": "heart_of_scales:cave-chow",
-  "hatch_condition": "dark"
+  "hatch_condition": "dark",
+  "stats": {
+    "breath": {
+      "damage": 3.0,
+      "range": 16.0,
+      "width": 2.0,
+      "rate_ticks": 6
+    }
+  }
 }

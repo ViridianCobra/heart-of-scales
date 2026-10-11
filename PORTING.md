@@ -58,6 +58,20 @@ This is the largest change.
 - `DragonBeaconScreen`'s list: `AbstractSelectionList` takes `(minecraft, width, height, y, itemHeight)` from 1.20.2, and its background and selection flags changed; check `RowList` against the 1.21.1 class.
 - `Entity.onRemovedFromWorld` and `getRemovalReason` keep their names on NeoForge.
 
+## Mixins
+- `master` has one client mixin: `CameraMixin` (flight zoom, breath camera lift and tilt). The `1.21.1` branch has no mixin setup yet.
+- Add `src/main/resources/heart_of_scales.mixins.json` and register it in `neoforge.mods.toml` with a `[[mixins]]` entry (`config = "heart_of_scales.mixins.json"`).
+  NeoForge runs on Mojang names, so drop the `refmap` line.
+- `CameraMixin`: `getMaxZoom(D)D` becomes `getMaxZoom(F)F` and takes a float. The 2-arg `setRotation` is deprecated; shadow `setRotation(float, float, float)` and pass the current roll through.
+- Flight zoom can move to `CalculateDetachedCameraDistanceEvent` (the branch's `FlightCameraHandler` already does this), and the breath camera's extra distance can join it there.
+  The lift and tilt still need the mixin: no event moves the camera position, and `ViewportEvent.ComputeCameraAngles` fires before vanilla pulls the camera back, which is too early for the tilt.
+
+## Dragon breath
+- `BreathCloudParticle` overrides Forge's `shouldCull()`, which NeoForge doesn't have. Override `getRenderBoundingBox(float)` to return an inflated or infinite box instead, or grown puffs pop out at the screen edges.
+- `TickEvent.ClientTickEvent` with `phase == END` becomes `ClientTickEvent.Post`. `ForgeConfigSpec` becomes `ModConfigSpec`.
+- `RiderMouthPacket` becomes a `CustomPacketPayload` with a `StreamCodec`, registered next to the rider input payload. Bump the registrar version with it.
+- `DragonRenderer` tracks the `mouth` bone in `preRender` and reads it in `renderFinal`. GeckoLib for 1.21 passes the render colour as one packed int rather than four floats, so check both overrides' signatures against the branch's GeckoLib.
+
 ## Data folder names
 - `loot_tables` to `loot_table`, `recipes` to `recipe`, `tags/items` to `tags/item`, `tags/blocks` to `tags/block`.
 - `structures` to `structure` (template NBT files). Worldgen JSON for structures is unchanged.

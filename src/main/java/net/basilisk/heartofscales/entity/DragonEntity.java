@@ -11,6 +11,7 @@ import net.basilisk.heartofscales.entity.ai.DragonSwimMoveControl;
 import net.basilisk.heartofscales.entity.ai.FleeCarelessPlayerGoal;
 import net.basilisk.heartofscales.entity.ai.ReturnToWaterGoal;
 import net.basilisk.heartofscales.entity.ai.TemptWithFoodGoal;
+import net.basilisk.heartofscales.entity.breath.DragonBreath;
 import net.basilisk.heartofscales.genome.DragonGenome;
 import net.basilisk.heartofscales.genome.Inheritance;
 import net.basilisk.heartofscales.item.ChowItem;
@@ -142,6 +143,12 @@ public class DragonEntity extends TamableAnimal implements GeoEntity, PlayerRide
     private static final EntityDataAccessor<Byte> DATA_JUMP_STATE =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BYTE);
     private static final String TAG_FLIGHT_MODE = "FlightMode";
+    private static final EntityDataAccessor<Float> DATA_BREATH =
+            SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.FLOAT);
+    private static final EntityDataAccessor<Boolean> DATA_BREATH_EXHAUSTED =
+            SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Boolean> DATA_BREATHING =
+            SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
     public static final int SADDLE_SLOT = 0;
     private static final int INVENTORY_SIZE = 1;
     /** Marks glideSpeed as not yet seeded; the first glide tick takes the speed the dragon already has. */
@@ -169,6 +176,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity, PlayerRide
     private final MoveControl swimMoveControl;
     private final PathNavigation swimNavigation;
     private final SimpleContainer inventory = new SimpleContainer(INVENTORY_SIZE);
+    private final DragonBreath breath = new DragonBreath(this, DATA_BREATH, DATA_BREATH_EXHAUSTED, DATA_BREATHING);
     // Transient rider input, held on the server and on the rider's client
     private boolean riderAscending;
     private boolean riderDescending;
@@ -233,6 +241,9 @@ public class DragonEntity extends TamableAnimal implements GeoEntity, PlayerRide
         entityData.define(DATA_AI_BANK, 0.0f);
         entityData.define(DATA_GLIDING, false);
         entityData.define(DATA_EXHAUSTED, false);
+        entityData.define(DATA_BREATH, StaminaStats.DEFAULT.max());
+        entityData.define(DATA_BREATH_EXHAUSTED, false);
+        entityData.define(DATA_BREATHING, false);
     }
 
     public FlightMode getFlightMode() {
@@ -289,6 +300,10 @@ public class DragonEntity extends TamableAnimal implements GeoEntity, PlayerRide
     /** The vanilla Jump key, which charges the ridden jump. */
     public void setRiderJumping(boolean jumping) {
         this.riderJumping = jumping;
+    }
+
+    public DragonBreath getBreath() {
+        return breath;
     }
 
     /** Stamina left, 0 to 1. */
@@ -793,12 +808,14 @@ public class DragonEntity extends TamableAnimal implements GeoEntity, PlayerRide
         super.tick();
         if (level().isClientSide) {
             tickRoll();
+            breath.tickClient();
             return;
         }
         tickAiBank();
         tickGliding();
         tickLeftBehind();
         tickStamina();
+        breath.tick();
         WaterBoundCrawl.tick(this);
         if (isInSwimMode()) RiddenSwimming.topUpPassengerAir(this);
         if (!swimNavigationConfigured && canSwim()) {
@@ -1246,6 +1263,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity, PlayerRide
         jumpTicks = 0;
         jumpLeftGround = false;
         setJumpState(JumpState.NONE);
+        breath.setRiderBreathing(false);
         wasFreeCam = false;
         freeCamCatchingUp = false;
         riddenFlightTicks = 0;

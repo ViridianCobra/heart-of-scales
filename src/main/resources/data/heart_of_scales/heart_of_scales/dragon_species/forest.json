@@ -7,6 +7,12 @@
   "favourite_food": "heart_of_scales:forest-chow",
   "hatch_condition": "dim",
   "stats": {
+    "breath": {
+      "damage": 3.0,
+      "range": 16.0,
+      "width": 2.0,
+      "rate_ticks": 6
+    },
     "jump": {
       "height": 12.0
     }

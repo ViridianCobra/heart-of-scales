@@ -3,13 +3,16 @@ package net.basilisk.heartofscales.client;
 import net.basilisk.heartofscales.HeartOfScales;
 import net.basilisk.heartofscales.entity.DragonEntity;
 import net.basilisk.heartofscales.entity.FlightMode;
+import net.basilisk.heartofscales.entity.breath.DragonBreath;
 import net.basilisk.heartofscales.network.ModNetwork;
 import net.basilisk.heartofscales.network.RiderInputPacket;
+import net.basilisk.heartofscales.network.RiderMouthPacket;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.event.TickEvent;
@@ -36,6 +39,7 @@ public final class RiderInputHandler {
     private static boolean lastFreeCam;
     private static boolean lastSprinting;
     private static boolean lastJumping;
+    private static boolean lastBreathing;
     /** Free cam is toggled by its key; it only means anything in the air, so landing and dismounting clear it. */
     private static boolean freeCamOn;
     /** Camera the player had before riding forced third person; null when nothing was forced. */
@@ -56,6 +60,7 @@ public final class RiderInputHandler {
             lastFreeCam = false;
             lastSprinting = false;
             lastJumping = false;
+            lastBreathing = false;
             freeCamOn = false;
             // A press made off the dragon must not flip free cam on the next mount
             while (ModKeyMappings.FREE_CAM.consumeClick()) {}
@@ -85,15 +90,21 @@ public final class RiderInputHandler {
         dragon.setRiderFreeCam(freeCam);
         dragon.setRiderSprinting(sprinting);
         dragon.setRiderJumping(jumping);
+        boolean breathing = ModKeyMappings.BREATHE.isDown();
         if (ascending != lastAscending || descending != lastDescending || freeCam != lastFreeCam
-                || sprinting != lastSprinting || jumping != lastJumping || toggleMode) {
-            ModNetwork.CHANNEL.sendToServer(new RiderInputPacket(ascending, descending, freeCam, sprinting, jumping, toggleMode));
+                || sprinting != lastSprinting || jumping != lastJumping || breathing != lastBreathing || toggleMode) {
+            ModNetwork.CHANNEL.sendToServer(new RiderInputPacket(ascending, descending, freeCam, sprinting, jumping, breathing,
+                    toggleMode));
             lastSprinting = sprinting;
+            lastBreathing = breathing;
             lastAscending = ascending;
             lastDescending = descending;
             lastFreeCam = freeCam;
             lastJumping = jumping;
         }
+        // Unlike the keys, the mouth moves with the animations, so it is sent every tick
+        Vec3 mouth = dragon.getBreath().mouthOffset();
+        if (breathing && mouth != null) ModNetwork.CHANNEL.sendToServer(new RiderMouthPacket(mouth));
     }
 
     /**
@@ -118,6 +129,11 @@ public final class RiderInputHandler {
             pitch += Math.min(STALL_ASSIST_RATE * ticks, STALL_ASSIST_PITCH - player.getXRot());
         }
         if (pitch != 0) player.turn(0, pitch / TURN_SCALE);
+    }
+
+    /** Whether the local rider is breathing, judged from their key so it is known before the server says so. */
+    public static boolean isBreathHeld(DragonBreath breath) {
+        return ModKeyMappings.BREATHE.isDown() && !breath.isExhausted() && breath.meterFraction() > 0.0f;
     }
 
     /**
