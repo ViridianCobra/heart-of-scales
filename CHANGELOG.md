@@ -3,7 +3,9 @@
 Each branch carries its own copy. What a version contains on a given target is whatever is listed under it on that branch.
 When a version is released, drop "(Unreleased)" from its heading and start the next version above it.
 
-## 0.0.2 (Unreleased)
+## 0.0.3 (Unreleased)
+
+## 0.0.2
 - Water dragons swim with their own animation instead of the flight one.
 - Right-click a dragon beacon to see every dragon that lives there: yours first, then other players', oldest tamed first. Each row shows where the dragon is (home, away, not loaded, died or removed), its coordinates and what it was told to do. Dragons that are not loaded show where they were last seen.
 - Dead dragons stay on their beacon's list with how they died until their owner clears them with the ✕.

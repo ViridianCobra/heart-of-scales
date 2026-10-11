@@ -44,7 +44,7 @@ turn rates in degrees per tick. A "factor" multiplies something else. A "respons
   "swims": false,
   "egg_tint": "#9BA98E",
   "foods": "heart_of_scales:dragon-food/air",
-  "favourite_food": "minecraft:cooked_rabbit",
+  "favourite_food": "heart_of_scales:plains-chow",
   "hatch_condition": "open_air",
   "stats": {
     "attributes": {
@@ -52,7 +52,7 @@ turn rates in degrees per tick. A "factor" multiplies something else. A "respons
       "movement_speed": 0.25,
       "flying_speed": 0.6,
       "attack_damage": 4.0,
-      "follow_range": 16.0
+      "follow_range": 32.0
     },
     "stamina": {
       "max": 100.0,
@@ -88,15 +88,23 @@ turn rates in degrees per tick. A "factor" multiplies something else. A "respons
       "free_cam_level_rate": 4.0,
       "free_cam_release_turn_rate": 8.0,
       "free_cam_head_yaw_limit": 70.0,
+      "ai_speed_factor": 0.5,
       "ai_max_yaw_turn": 3.0,
       "ai_max_pitch_turn": 10.0,
+      "ai_roll_per_yaw_degree": 20.0,
       "roam_takeoff_chance": 600,
-      "roam_min_ticks": 300,
-      "roam_max_ticks": 600,
-      "roam_min_distance": 8.0,
-      "roam_max_distance": 16.0,
-      "roam_min_height": 3,
-      "roam_max_height": 12
+      "wander_radius": 32.0,
+      "owner_wander_radius": 16.0,
+      "wander_min_ticks": 600,
+      "wander_max_ticks": 1800,
+      "cruise_min_height": 8,
+      "cruise_max_height": 20,
+      "circle_min_radius": 16.0,
+      "circle_max_radius": 32.0,
+      "owner_circle_min_radius": 10.0,
+      "owner_circle_max_radius": 16.0,
+      "circle_min_laps": 1,
+      "circle_max_laps": 2
     },
     "glide": {
       "yaw_rate": 4.0,
@@ -157,7 +165,7 @@ Vanilla attributes, set as base values when the dragon gets its genome. The wate
 | `movement_speed` | Walking speed. Vanilla mobs sit around 0.2 to 0.3. |
 | `flying_speed` | Cruise speed in the air, blocks per tick. Free flight, glide and AI flight all scale from this. |
 | `attack_damage` | Melee damage per hit. |
-| `follow_range` | How far it notices targets and its owner. |
+| `follow_range` | How far it notices targets and its owner, and how far a route to its owner is planned. |
 
 ### stamina
 
@@ -213,12 +221,16 @@ Ridden free flight, the render lean, free cam, and the AI's own flying.
 | `free_cam_level_rate` | Free cam free flight: how fast pitch levels out. |
 | `free_cam_release_turn_rate` | After free cam is released, how fast the body swings back to the look. |
 | `free_cam_head_yaw_limit` | How far the head may turn from the body to follow the rider's look, degrees. |
+| `ai_speed_factor` | AI flight cruise speed as a multiple of `flying_speed`, in blocks per tick. Climbs and dives are held to 30 degrees and ease out as the target height is reached. |
 | `ai_max_yaw_turn` | AI flight: yaw turn per tick. |
 | `ai_max_pitch_turn` | AI flight: pitch turn per tick. |
-| `roam_takeoff_chance` | Each tick on the ground an idle dragon has a 1 in this chance to take off. |
-| `roam_min_ticks`, `roam_max_ticks` | How long a roaming flight lasts. |
-| `roam_min_distance`, `roam_max_distance` | How far ahead each roam target is picked. |
-| `roam_min_height`, `roam_max_height` | Blocks above the ground a roam target sits. |
+| `ai_roll_per_yaw_degree` | AI flight: degrees of lean into a turn per degree of yaw turned that tick, capped at `max_roll` and eased by `roll_smoothing`. The ridden equivalent is `roll_per_yaw_degree`. |
+| `roam_takeoff_chance` | Each tick on the ground an idle dragon has a 1 in this chance to take off. A wild dragon flies around where it first appeared, a dragon told to Wander around its beacon, and a following dragon around its owner, only taking off on its own with them within 16 blocks. A following dragon also takes off straight away to catch up when its owner is more than 24 blocks away or 6 above it. Following dragons never teleport. |
+| `wander_radius`, `owner_wander_radius` | How far an idle flight meanders from its centre before it is pulled back, from home or beacon and from an owner. Flight turns smoothly at up to 60% of `ai_max_yaw_turn`. Well past the radius it flies straight back, faster the further out it is, up to double `ai_speed_factor`: how a following dragon catches up. |
+| `wander_min_ticks`, `wander_max_ticks` | How long an idle flight lasts before it lands near its centre. It keeps flying while still catching up, or while its owner is in the air. |
+| `cruise_min_height`, `cruise_max_height` | Blocks above the highest ground or treetop under the dragon and up to 16 blocks ahead of it that a flight is flown at, swelling up and down by 4. Never less than 4 above a following dragon's owner. Picked once per flight. Now and then a flight swoops down to 4 above the ground and climbs back. |
+| `circle_min_radius`, `circle_max_radius`, `owner_circle_min_radius`, `owner_circle_max_radius` | Now and then a flight laps its centre instead of meandering: the lap's radius, around home or beacon and around an owner. |
+| `circle_min_laps`, `circle_max_laps` | How many laps one of those goes round before meandering again. |
 
 ### glide
 
@@ -265,7 +277,8 @@ blocks per tick. Ridden swimming cruises at that same speed.
 
 ### home
 
-The box around a home beacon a wandering dragon stays inside.
+The box around a home beacon a wandering dragon stays inside while it walks. Its flights circle the beacon further out
+and land back inside the box.
 
 | field | meaning |
 |---|---|

@@ -36,6 +36,7 @@ public final class RiderInputHandler {
     private static boolean lastDescending;
     private static boolean lastFreeCam;
     private static boolean lastSprinting;
+    private static boolean lastJumping;
     private static boolean lastBreathing;
     /** Free cam is toggled by its key; it only means anything in the air, so landing and dismounting clear it. */
     private static boolean freeCamOn;
@@ -56,6 +57,7 @@ public final class RiderInputHandler {
             lastDescending = false;
             lastFreeCam = false;
             lastSprinting = false;
+            lastJumping = false;
             lastBreathing = false;
             freeCamOn = false;
             // A press made off the dragon must not flip free cam on the next mount
@@ -81,17 +83,22 @@ public final class RiderInputHandler {
         dragon.setRiderDescending(descending);
         // Vanilla's own Sprint key, so the hold-or-toggle accessibility option applies to dragons too
         boolean sprinting = minecraft.options.keySprint.isDown();
+        // Vanilla's Jump key, the one that fills the jump bar, so the crouch matches the bar even if Ascend is rebound
+        boolean jumping = minecraft.options.keyJump.isDown();
         dragon.setRiderFreeCam(freeCam);
         dragon.setRiderSprinting(sprinting);
+        dragon.setRiderJumping(jumping);
         boolean breathing = ModKeyMappings.BREATHE.isDown();
         if (ascending != lastAscending || descending != lastDescending || freeCam != lastFreeCam
-                || sprinting != lastSprinting || breathing != lastBreathing || toggleMode) {
-            ModNetwork.CHANNEL.sendToServer(new RiderInputPacket(ascending, descending, freeCam, sprinting, breathing, toggleMode));
+                || sprinting != lastSprinting || jumping != lastJumping || breathing != lastBreathing || toggleMode) {
+            ModNetwork.CHANNEL.sendToServer(new RiderInputPacket(ascending, descending, freeCam, sprinting, jumping, breathing,
+                    toggleMode));
             lastSprinting = sprinting;
             lastBreathing = breathing;
             lastAscending = ascending;
             lastDescending = descending;
             lastFreeCam = freeCam;
+            lastJumping = jumping;
         }
     }
 

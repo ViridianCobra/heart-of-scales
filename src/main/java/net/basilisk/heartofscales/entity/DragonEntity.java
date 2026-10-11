@@ -2,6 +2,8 @@ package net.basilisk.heartofscales.entity;
 
 import net.basilisk.heartofscales.block.DragonBeaconBlock;
 import net.basilisk.heartofscales.entity.ai.DragonFlightMoveControl;
+import net.basilisk.heartofscales.entity.ai.DragonFollowOwnerGoal;
+import net.basilisk.heartofscales.entity.ai.OwnerCatchUp;
 import net.basilisk.heartofscales.entity.ai.DragonLookControl;
 import net.basilisk.heartofscales.entity.ai.DragonRoamFlightGoal;
 import net.basilisk.heartofscales.entity.ai.DragonRoamSwimGoal;
@@ -27,6 +29,7 @@ import net.basilisk.heartofscales.species.stats.FlightStats;
 import net.basilisk.heartofscales.species.stats.GlideStats;
 import net.basilisk.heartofscales.species.stats.GroundStats;
 import net.basilisk.heartofscales.species.stats.HomeStats;
+import net.basilisk.heartofscales.species.stats.JumpStats;
 import net.basilisk.heartofscales.species.stats.StaminaStats;
 import net.basilisk.heartofscales.species.stats.TamingStats;
 import net.minecraft.core.BlockPos;
@@ -58,13 +61,16 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.MoverType;
+import net.minecraft.world.entity.PlayerRideableJumping;
 import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.common.ForgeHooks;
 import net.minecraftforge.event.ForgeEventFactory;
 import net.minecraftforge.network.NetworkHooks;
 import org.jetbrains.annotations.Nullable;
@@ -75,7 +81,6 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.control.MoveControl;
 import net.minecraft.world.entity.ai.goal.BreedGoal;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
-import net.minecraft.world.entity.ai.goal.FollowOwnerGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.MoveTowardsRestrictionGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
@@ -89,11 +94,9 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.constant.DefaultAnimations;
 import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.core.animation.AnimatableManager;
 import software.bernie.geckolib.core.animation.AnimationController;
-import software.bernie.geckolib.core.animation.RawAnimation;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
 import java.util.List;
@@ -101,7 +104,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 
-public class DragonEntity extends TamableAnimal implements GeoEntity {
+public class DragonEntity extends TamableAnimal implements GeoEntity, PlayerRideableJumping {
     private static final EntityDataAccessor<String> DATA_SUBSPECIES =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.STRING);
     private static final String TAG_GENOME = "Genome";
@@ -112,6 +115,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BYTE);
     private static final String TAG_BEACON = "Beacon";
     private static final String TAG_BEACON_DIMENSION = "BeaconDimension";
+    private static final String TAG_WILD_HOME = "WildHome";
+    private static final String TAG_WILD_HOME_DIMENSION = "WildHomeDimension";
     private static final String TAG_COMMAND = "Command";
     private static final EntityDataAccessor<Boolean> DATA_FLYING =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
@@ -124,9 +129,18 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private static final String TAG_SADDLE = "Saddle";
     private static final EntityDataAccessor<Float> DATA_STAMINA =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.FLOAT);
+    private static final EntityDataAccessor<Float> DATA_AI_BANK =
+            SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.FLOAT);
+    private static final EntityDataAccessor<Boolean> DATA_GLIDING =
+            SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
+    /** Share of the way the client roll closes on the synced AI bank each tick; the server has already eased it. */
+    private static final float SYNCED_BANK_EASING = 0.5f;
+    private static final int LEFT_BEHIND_CHECK_TICKS = 20;
     private static final EntityDataAccessor<Boolean> DATA_EXHAUSTED =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Byte> DATA_FLIGHT_MODE =
+            SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BYTE);
+    private static final EntityDataAccessor<Byte> DATA_JUMP_STATE =
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BYTE);
     private static final String TAG_FLIGHT_MODE = "FlightMode";
     private static final EntityDataAccessor<Float> DATA_BREATH =
@@ -137,24 +151,23 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             SynchedEntityData.defineId(DragonEntity.class, EntityDataSerializers.BOOLEAN);
     public static final int SADDLE_SLOT = 0;
     private static final int INVENTORY_SIZE = 1;
-    // Seat height above the feet; the placeholder saddle bone is at 20/16 but a sitting rider looks right a little lower
-    private static final double SADDLE_HEIGHT = 1.1;
-    /** Height the body pitches and rolls about in flight; must match DragonRenderer's pivot. */
-    public static final double BODY_PIVOT_HEIGHT = 0.9;
     /** Marks glideSpeed as not yet seeded; the first glide tick takes the speed the dragon already has. */
     private static final double GLIDE_SPEED_UNSET = -1.0;
-    private static final RawAnimation SIT = RawAnimation.begin().thenLoop("misc.sit");
-    private static final RawAnimation FLY = RawAnimation.begin().thenLoop("misc.fly");
+    /** A ridden jump still on the ground after this many ticks is over: a low ceiling, or lift-off the server never heard of. */
+    private static final int JUMP_LIFTOFF_TICKS = 10;
 
     private final AnimatableInstanceCache geoCache = GeckoLibUtil.createInstanceCache(this);
     private DragonGenome genome = DragonGenome.defaultGenome();
     private boolean genomeAssigned;
     // Resolved from the genome's subspecies id; never null, so stats can be read before the first sync arrives
     private DragonSpecies species = DragonSpecies.DEFAULT;
+    private DragonBody body = DragonBody.PLACEHOLDER;
     private int tameProgress;
     private long tamedAt;
     @Nullable
     private GlobalPos home;
+    @Nullable
+    private GlobalPos wildHome;
     // Ground and air movement each keep their own controller and navigator; setFlying swaps between them
     private final MoveControl groundMoveControl;
     private final PathNavigation groundNavigation;
@@ -169,12 +182,17 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private boolean riderDescending;
     private boolean riderFreeCam;
     private boolean riderSprinting;
+    private boolean riderJumping;
     private int staminaRestTicks;
     private boolean wasFreeCam;
     private boolean freeCamCatchingUp;
     private boolean swimNavigationConfigured;
     private float bankTurnRate;
     private int riddenFlightTicks;
+    // Ridden jump: a release waiting to launch (rider's client), and the jump in progress (server)
+    private int pendingJumpPower;
+    private int jumpTicks;
+    private boolean jumpLeftGround;
     private double glideSpeed = GLIDE_SPEED_UNSET;
     private double glideFallSpeed;
     private int glideStallTicks;
@@ -185,6 +203,9 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     private float tiltPitch;
     private float tiltPitchO;
     private float lastYaw;
+    // Server-side AI bank, synced through DATA_AI_BANK
+    private float aiBank;
+    private float lastServerYaw;
 
     public DragonEntity(EntityType<? extends DragonEntity> type, Level level) {
         super(type, level);
@@ -202,6 +223,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         swimming.setCanFloat(false);
         swimNavigation = swimming;
         inventory.addListener(container -> onInventoryChanged());
+        // A synced value still at its default is never sent to clients, so a forest dragon never triggers onSyncedDataUpdated
+        resolveSpecies();
     }
 
     @Override
@@ -213,7 +236,10 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         entityData.define(DATA_SWIM_MODE, false);
         entityData.define(DATA_SADDLED, false);
         entityData.define(DATA_FLIGHT_MODE, (byte) FlightMode.FREE.ordinal());
+        entityData.define(DATA_JUMP_STATE, (byte) JumpState.NONE.ordinal());
         entityData.define(DATA_STAMINA, StaminaStats.DEFAULT.max());
+        entityData.define(DATA_AI_BANK, 0.0f);
+        entityData.define(DATA_GLIDING, false);
         entityData.define(DATA_EXHAUSTED, false);
         entityData.define(DATA_BREATH, StaminaStats.DEFAULT.max());
         entityData.define(DATA_BREATH_EXHAUSTED, false);
@@ -269,6 +295,11 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
 
     public void setRiderSprinting(boolean sprinting) {
         this.riderSprinting = sprinting;
+    }
+
+    /** The vanilla Jump key, which charges the ridden jump. */
+    public void setRiderJumping(boolean jumping) {
+        this.riderJumping = jumping;
     }
 
     public DragonBreath getBreath() {
@@ -361,6 +392,45 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         return species.swims();
     }
 
+    /** Space is this dragon's jump key: the species jumps and cannot fly. A flier takes off on Space instead. */
+    private boolean jumpsWhenRidden() {
+        return species.jumps() && !canFly();
+    }
+
+    /**
+     * Whether the rider can charge and release a jump: a jumping species out of flight and swim mode. Vanilla asks on
+     * the rider's client, to charge and draw the jump bar, and on the server, to accept a release.
+     */
+    @Override
+    public boolean canJump() {
+        return jumpsWhenRidden() && !isFlying() && !isInSwimMode();
+    }
+
+    public JumpState getJumpState() {
+        return JumpState.byOrdinal(entityData.get(DATA_JUMP_STATE));
+    }
+
+    /** Server only: a client's copy would be overwritten by the next sync and flicker the animation. */
+    private void setJumpState(JumpState state) {
+        if (!level().isClientSide) entityData.set(DATA_JUMP_STATE, (byte) state.ordinal());
+    }
+
+    /** Rider's client, on release. A release off the ground is dropped, not saved for the landing as a horse does. */
+    @Override
+    public void onPlayerJump(int power) {
+        if (power > 0 && onGround()) pendingJumpPower = power;
+    }
+
+    /** Server, on release, so every other player sees the jump too. */
+    @Override
+    public void handleStartJump(int power) {
+        if (onGround()) startJump();
+    }
+
+    @Override
+    public void handleStopJump() {
+    }
+
     public boolean isFlying() {
         return entityData.get(DATA_FLYING);
     }
@@ -395,6 +465,11 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     /** Ridden free-flight cruise speed in blocks per tick: the flying speed attribute scaled by the species factor. */
     public double flightCruiseSpeed() {
         return getAttributeValue(Attributes.FLYING_SPEED) * getStats().flight().riddenSpeedFactor();
+    }
+
+    /** AI flight cruise speed in blocks per tick: the flying speed attribute scaled by the species factor. */
+    public double aiFlightSpeed() {
+        return getAttributeValue(Attributes.FLYING_SPEED) * getStats().flight().aiSpeedFactor();
     }
 
     /** The only place the swim move control, navigation and gravity are switched. Server side. */
@@ -442,8 +517,19 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         return species.stats();
     }
 
+    /** The model, seat and animations this dragon's subspecies is drawn and ridden with. */
+    public DragonBody getBody() {
+        return body;
+    }
+
+    /** The body's scale, halved for a baby to match the halved hitbox vanilla gives baby mobs. */
+    public float getBodyScale() {
+        return body.scale() * (isBaby() ? 0.5f : 1.0f);
+    }
+
     private void resolveSpecies() {
         species = ModRegistries.speciesOrDefault(level().registryAccess(), getSubspecies());
+        body = DragonBody.forSubspecies(getSubspecies());
     }
 
     /** The client learns the subspecies through synced data, so it resolves the species there rather than in setGenome. */
@@ -492,10 +578,14 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         tag.putString(TAG_FLIGHT_MODE, getFlightMode().id());
         ItemStack saddle = inventory.getItem(SADDLE_SLOT);
         if (!saddle.isEmpty()) tag.put(TAG_SADDLE, saddle.save(new CompoundTag()));
-        if (home != null) {
-            tag.put(TAG_BEACON, NbtUtils.writeBlockPos(home.pos()));
-            tag.putString(TAG_BEACON_DIMENSION, home.dimension().location().toString());
-        }
+        writeGlobalPos(tag, home, TAG_BEACON, TAG_BEACON_DIMENSION);
+        writeGlobalPos(tag, wildHome, TAG_WILD_HOME, TAG_WILD_HOME_DIMENSION);
+    }
+
+    private static void writeGlobalPos(CompoundTag tag, @Nullable GlobalPos pos, String posKey, String dimensionKey) {
+        if (pos == null) return;
+        tag.put(posKey, NbtUtils.writeBlockPos(pos.pos()));
+        tag.putString(dimensionKey, pos.dimension().location().toString());
     }
 
     @Override
@@ -506,7 +596,8 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         }
         tameProgress = tag.getInt(TAG_TAME_PROGRESS);
         tamedAt = tag.getLong(TAG_TAMED_AT);
-        home = readHome(tag);
+        home = readGlobalPos(tag, TAG_BEACON, TAG_BEACON_DIMENSION);
+        wildHome = readGlobalPos(tag, TAG_WILD_HOME, TAG_WILD_HOME_DIMENSION);
         setFlying(tag.getBoolean(TAG_FLYING));
         setSwimMode(tag.getBoolean(TAG_SWIM_MODE));
         // The species may have lost a mode since the save was written; an unavailable mode falls back to the first
@@ -527,12 +618,12 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     }
 
     @Nullable
-    private GlobalPos readHome(CompoundTag tag) {
-        if (!tag.contains(TAG_BEACON, Tag.TAG_COMPOUND)) return null;
-        ResourceLocation dimension = tag.contains(TAG_BEACON_DIMENSION, Tag.TAG_STRING)
-                ? ResourceLocation.tryParse(tag.getString(TAG_BEACON_DIMENSION)) : null;
-        ResourceKey<Level> dimensionKey = dimension != null ? ResourceKey.create(Registries.DIMENSION, dimension) : level().dimension();
-        return GlobalPos.of(dimensionKey, NbtUtils.readBlockPos(tag.getCompound(TAG_BEACON)));
+    private GlobalPos readGlobalPos(CompoundTag tag, String posKey, String dimensionKey) {
+        if (!tag.contains(posKey, Tag.TAG_COMPOUND)) return null;
+        ResourceLocation dimension = tag.contains(dimensionKey, Tag.TAG_STRING)
+                ? ResourceLocation.tryParse(tag.getString(dimensionKey)) : null;
+        ResourceKey<Level> dimensionId = dimension != null ? ResourceKey.create(Registries.DIMENSION, dimension) : level().dimension();
+        return GlobalPos.of(dimensionId, NbtUtils.readBlockPos(tag.getCompound(posKey)));
     }
 
     public static AttributeSupplier.Builder createAttributes() {
@@ -541,7 +632,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
                 .add(Attributes.MOVEMENT_SPEED, 0.25)
                 .add(Attributes.FLYING_SPEED, 0.6)
                 .add(Attributes.ATTACK_DAMAGE, 4.0)
-                .add(Attributes.FOLLOW_RANGE, 16.0);
+                .add(Attributes.FOLLOW_RANGE, 32.0);
     }
 
     @Override
@@ -560,17 +651,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         goalSelector.addGoal(4, new DragonRoamFlightGoal(this));
         goalSelector.addGoal(4, new DragonRoamSwimGoal(this));
         goalSelector.addGoal(5, new MoveTowardsRestrictionGoal(this, 1.0));
-        goalSelector.addGoal(6, new FollowOwnerGoal(this, 1.0, 10.0f, 2.0f, false) {
-            @Override
-            public boolean canUse() {
-                return getCommand() == DragonCommand.FOLLOW && super.canUse();
-            }
-
-            @Override
-            public boolean canContinueToUse() {
-                return getCommand() == DragonCommand.FOLLOW && super.canContinueToUse();
-            }
-        });
+        goalSelector.addGoal(6, new DragonFollowOwnerGoal(this));
         goalSelector.addGoal(7, new ReturnToWaterGoal(this));
         goalSelector.addGoal(8, new WaterAvoidingRandomStrollGoal(this, 1.0));
         goalSelector.addGoal(9, new LookAtPlayerGoal(this, Player.class, 8.0f));
@@ -605,6 +686,21 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
 
     public boolean isHomeInThisDimension() {
         return home != null && home.dimension() == level().dimension();
+    }
+
+    /** Where a wild dragon first found itself, which its idle flights circle. Always null once tamed. */
+    @Nullable
+    public GlobalPos getWildHome() {
+        return isTame() ? null : wildHome;
+    }
+
+    // Set here rather than on spawn so dragons from older saves get one too; a tamed dragon circles its beacon or owner instead
+    private void tickWildHome() {
+        if (isTame()) {
+            wildHome = null;
+        } else if (wildHome == null || wildHome.dimension() != level().dimension()) {
+            wildHome = GlobalPos.of(level().dimension(), blockPosition());
+        }
     }
 
     /** Gives the dragon a home and sends it there to wander. */
@@ -715,6 +811,9 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             breath.tickClient();
             return;
         }
+        tickAiBank();
+        tickGliding();
+        tickLeftBehind();
         tickStamina();
         breath.tick();
         WaterBoundCrawl.tick(this);
@@ -725,6 +824,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             swimNavigationConfigured = true;
         }
         if (tickCount % ROSTER_UPDATE_INTERVAL == 0) updateRoster();
+        tickWildHome();
         if (home == null || tickCount % getStats().home().checkIntervalTicks() != 0) return;
         if (isWalkingHome()) DragonHomecoming.track(this);
         if (isHomeInThisDimension() && level().isLoaded(home.pos())) {
@@ -742,7 +842,10 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         return getFirstPassenger() instanceof Player rider && isSaddled() && isOwnedBy(rider) ? rider : null;
     }
 
-    /** Runs on the server and the rider's client, so take-off and landing are decided identically on both. */
+    /**
+     * Runs on the server and the rider's client, so take-off and landing are decided identically on both. Vanilla also
+     * runs it on every other client that sees the rider, so nothing here may write synced state on a client.
+     */
     @Override
     protected void tickRidden(Player rider, Vec3 input) {
         super.tickRidden(rider, input);
@@ -783,6 +886,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             yHeadRot += Mth.clamp(Mth.wrapDegrees(rider.getYRot() - getYRot()), -flight.freeCamHeadYawLimit(), flight.freeCamHeadYawLimit());
         }
 
+        tickJump(input);
         RiddenSwimming.tickMode(this);
         if (isInSwimMode()) return;
         if (!isFlying()) {
@@ -797,7 +901,54 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             return;
         }
         riddenFlightTicks++;
-        if (onGround() && !riderAscending && riddenFlightTicks > flight.landingGraceTicks()) setFlying(false);
+        // A jumper's Space is its jump key, so holding it to charge the next jump must not keep it skimming the ground
+        boolean holdingUp = riderAscending && !jumpsWhenRidden();
+        if (onGround() && !holdingUp && riddenFlightTicks > flight.landingGraceTicks()) setFlying(false);
+    }
+
+    /**
+     * Charge while Jump is held on the ground, launch on release, and end on landing. Only the server decides the synced
+     * state, from the rider's Jump key and the movement the rider's client reports; the rider's client only launches.
+     * Watching clients run tickRidden too and must leave the state alone.
+     */
+    private void tickJump(Vec3 input) {
+        if (level().isClientSide) {
+            if (pendingJumpPower > 0 && isControlledByLocalInstance() && canJump() && onGround()) launch(pendingJumpPower, input);
+            pendingJumpPower = 0;
+            return;
+        }
+        if (!canJump()) {
+            setJumpState(JumpState.NONE);
+            return;
+        }
+        if (getJumpState() == JumpState.JUMPING) {
+            jumpTicks++;
+            if (!onGround()) jumpLeftGround = true;
+            else if (jumpLeftGround || jumpTicks > JUMP_LIFTOFF_TICKS) setJumpState(JumpState.NONE);
+        }
+        if (getJumpState() != JumpState.JUMPING) {
+            setJumpState(riderJumping && onGround() ? JumpState.CHARGING : JumpState.NONE);
+        }
+    }
+
+    /** The horse's jump, with the species' height in place of the horse's jump strength. Rider's client only. */
+    private void launch(int power, Vec3 input) {
+        JumpStats jump = getStats().jump();
+        Vec3 motion = getDeltaMovement();
+        setDeltaMovement(motion.x, jump.launchSpeed(power) * getBlockJumpFactor() + getJumpBoostPower(), motion.z);
+        if (input.z > 0) {
+            double push = jump.forwardPush() * JumpStats.chargeScale(power);
+            double yaw = Math.toRadians(getYRot());
+            setDeltaMovement(getDeltaMovement().add(-Math.sin(yaw) * push, 0, Math.cos(yaw) * push));
+        }
+        hasImpulse = true;
+        ForgeHooks.onLivingJump(this);
+    }
+
+    private void startJump() {
+        setJumpState(JumpState.JUMPING);
+        jumpTicks = 0;
+        jumpLeftGround = false;
     }
 
     /** Free cam glide: the keys steer the body's own heading. A is left, which is a falling yaw; W is nose down. */
@@ -833,6 +984,12 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         }
         if (isInSwimMode() && isEffectiveAi() && !isVehicle()) {
             travelSwimming(input);
+            return;
+        }
+        if (isFlying() && isEffectiveAi() && !isVehicle()) {
+            // The flight move control sets the velocity; vanilla's air push and drag on top made it bounce
+            move(MoverType.SELF, getDeltaMovement());
+            calculateEntityAnimation(true);
             return;
         }
         super.travel(input);
@@ -984,8 +1141,71 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             }
             targetRoll = Mth.clamp(targetRoll, -flight.maxRoll(), flight.maxRoll());
         }
-        roll += (targetRoll - roll) * flight.rollSmoothing();
+        float smoothing = flight.rollSmoothing();
+        if (isFlying() && getControllingPassenger() == null) {
+            targetRoll = entityData.get(DATA_AI_BANK);
+            smoothing = SYNCED_BANK_EASING;
+        }
+        roll += (targetRoll - roll) * smoothing;
         tiltPitch += (targetPitch - tiltPitch) * flight.rollSmoothing();
+    }
+
+    /**
+     * AI flight leans into its turns. Worked out on the server from the exact yaw and synced: clients only get the yaw in
+     * 1.4 degree steps, and only once a step is crossed, so a slow turn reaches them stop-start and the lean stuttered.
+     */
+    private void tickAiBank() {
+        float yawDelta = Mth.degreesDifference(lastServerYaw, getYRot());
+        lastServerYaw = getYRot();
+        FlightStats flight = getStats().flight();
+        float target = isFlying() && getControllingPassenger() == null
+                ? Mth.clamp(yawDelta * flight.aiRollPerYawDegree(), -flight.maxRoll(), flight.maxRoll()) : 0.0f;
+        aiBank += (target - aiBank) * flight.rollSmoothing();
+        entityData.set(DATA_AI_BANK, aiBank);
+    }
+
+    /** The owner a tamed dragon told to Follow is keeping with, when they are here to follow: same dimension, not spectating. */
+    @Nullable
+    public LivingEntity getFollowedOwner() {
+        if (!isTame() || getCommand() != DragonCommand.FOLLOW) return null;
+        LivingEntity owner = getOwner();
+        return owner != null && !owner.isSpectator() ? owner : null;
+    }
+
+    /**
+     * A following dragon about to fall out of the area the server runs is moved to its owner while it still can be: once
+     * frozen it runs no code. Checked here rather than in a goal so it applies walking, chasing in the air or otherwise.
+     */
+    private void tickLeftBehind() {
+        if (tickCount % LEFT_BEHIND_CHECK_TICKS != 0 || isPassenger() || isLeashed() || isVehicle()
+                || !(level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        LivingEntity owner = getFollowedOwner();
+        if (owner == null) return;
+        ChunkPos here = chunkPosition();
+        ChunkPos theirs = owner.chunkPosition();
+        if (OwnerCatchUp.nearSimulationEdge(here.x, here.z, theirs.x, theirs.z, serverLevel.getServer().getPlayerList().getSimulationDistance())) {
+            OwnerCatchUp.teleportNear(this, owner);
+        }
+    }
+
+    /** Wings held out rather than flapping. Synced: the client has neither an AI dragon's exact velocity nor the rider's sprint. */
+    public boolean isGliding() {
+        return entityData.get(DATA_GLIDING);
+    }
+
+    private void tickGliding() {
+        boolean gliding;
+        if (!isFlying()) {
+            gliding = false;
+        } else if (getControllingPassenger() != null) {
+            // Sprinting in glide mode is the powered wingbeats
+            gliding = getFlightMode() == FlightMode.GLIDE && !isSprinting();
+        } else {
+            gliding = DragonFlightMoveControl.nextAiGliding(isGliding(), getDeltaMovement());
+        }
+        entityData.set(DATA_GLIDING, gliding);
     }
 
     @Override
@@ -1005,7 +1225,7 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
 
     @Override
     public double getPassengersRidingOffset() {
-        return SADDLE_HEIGHT * (isBaby() ? 0.5 : 1.0);
+        return body.seatHeight() * getBodyScale();
     }
 
     /** In flight the saddle point swings with the body's pitch and roll about the render pivot. */
@@ -1016,10 +1236,10 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
             super.positionRider(passenger, callback);
             return;
         }
-        double scale = isBaby() ? 0.5 : 1.0;
-        double pivot = BODY_PIVOT_HEIGHT * scale;
+        double scale = getBodyScale();
+        double pivot = body.pivotHeight() * scale;
         // The rider's own offset swings with the body too; added straight down it pulls them off the back in a steep dive
-        double seat = SADDLE_HEIGHT * scale + passenger.getMyRidingOffset() - pivot;
+        double seat = body.seatHeight() * scale + passenger.getMyRidingOffset() - pivot;
         double pitch = Math.toRadians(getXRot() + tiltPitch);
         double rollRad = Math.toRadians(roll);
         double yaw = Math.toRadians(getYRot());
@@ -1038,6 +1258,11 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
         riderDescending = false;
         riderFreeCam = false;
         riderSprinting = false;
+        riderJumping = false;
+        pendingJumpPower = 0;
+        jumpTicks = 0;
+        jumpLeftGround = false;
+        setJumpState(JumpState.NONE);
         breath.setRiderBreathing(false);
         wasFreeCam = false;
         freeCamCatchingUp = false;
@@ -1199,10 +1424,24 @@ public class DragonEntity extends TamableAnimal implements GeoEntity {
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         controllers.add(new AnimationController<>(this, "Movement", 5, state -> {
-            // Fly is the placeholder until a misc.swim animation exists
-            if (isFlying() || isInSwimMode()) return state.setAndContinue(FLY);
-            if (isInSittingPose()) return state.setAndContinue(SIT);
-            return state.setAndContinue(state.isMoving() ? DefaultAnimations.WALK : DefaultAnimations.IDLE);
+            DragonBody.Animations animations = body.animations();
+            AnimationController<DragonEntity> controller = state.getController();
+            controller.transitionLength(5);
+            if (isFlying()) return state.setAndContinue(isGliding() ? animations.glide() : animations.fly());
+            if (isInSwimMode()) return state.setAndContinue(animations.swim());
+            // GeckoLib blends into an animation's first pose before playing it. The leap starts where the crouch ends, so
+            // a blend would only hold the crouch into the air; the crouch's short one keeps it in step with the jump bar.
+            JumpState jump = getJumpState();
+            if (jump == JumpState.CHARGING) {
+                controller.transitionLength(2);
+                return state.setAndContinue(animations.jumpCharge());
+            }
+            if (jump == JumpState.JUMPING) {
+                controller.transitionLength(0);
+                return state.setAndContinue(animations.jump());
+            }
+            if (isInSittingPose()) return state.setAndContinue(animations.sit());
+            return state.setAndContinue(state.isMoving() ? animations.walk() : animations.idle());
         }));
     }
 

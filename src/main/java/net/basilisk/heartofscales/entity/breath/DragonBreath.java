@@ -23,7 +23,6 @@ public final class DragonBreath {
     private static final double MOUTH_FORWARD = 1.5;
     private static final double MOUTH_HEIGHT = 1.6;
     private static final double MAX_AIM_DEGREES = 60.0;
-    private static final double BABY_SCALE = 0.5;
     /** The rider's eye sits behind the mouth, so the crosshair is followed this much past the breath's range. */
     private static final double CROSSHAIR_EXTRA_REACH = 4.0;
     /** A step longer than this in one tick is a teleport, not speed. */
@@ -144,8 +143,8 @@ public final class DragonBreath {
      * air and water, so on the ground the head stays level.
      */
     private Vec3 headPoint(double forward) {
-        double scale = dragon.isBaby() ? BABY_SCALE : 1.0;
-        double pivot = DragonEntity.BODY_PIVOT_HEIGHT * scale;
+        double scale = dragon.getBodyScale();
+        double pivot = dragon.getBody().pivotHeight() * scale;
         return new Vec3(0.0, MOUTH_HEIGHT * scale - pivot, forward * scale)
                 .xRot(-pitch() * Mth.DEG_TO_RAD)
                 .yRot(-dragon.getYRot() * Mth.DEG_TO_RAD)

@@ -5,7 +5,7 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 /** Base values for the vanilla attributes a subspecies starts with. */
 public record AttributeStats(double maxHealth, double movementSpeed, double flyingSpeed, double attackDamage, double followRange) {
-    public static final AttributeStats DEFAULT = new AttributeStats(30.0, 0.25, 0.6, 4.0, 16.0);
+    public static final AttributeStats DEFAULT = new AttributeStats(30.0, 0.25, 0.6, 4.0, 32.0);
 
     public static final Codec<AttributeStats> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Codec.DOUBLE.optionalFieldOf("max_health", DEFAULT.maxHealth()).forGetter(AttributeStats::maxHealth),

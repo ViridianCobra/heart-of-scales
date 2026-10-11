@@ -5,9 +5,11 @@ import net.basilisk.heartofscales.entity.DragonEntity;
 import net.basilisk.heartofscales.species.stats.SwimStats;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.EnumSet;
@@ -59,11 +61,13 @@ public class ReturnToWaterGoal extends Goal {
         retryTicksLeft = RETRY_TICKS;
     }
 
-    /** Nearest sampled water block with water or air directly above it, or null. */
+    /** Nearest sampled water block with water or air directly above it, near the owner when following; or null. */
     @Nullable
     private BlockPos findWater() {
         Level level = dragon.level();
         BlockPos origin = dragon.blockPosition();
+        LivingEntity owner = dragon.getFollowedOwner();
+        Vec3 ownerPos = owner != null ? owner.position() : null;
         BlockPos best = null;
         double bestDistance = Double.MAX_VALUE;
         SwimStats swim = dragon.getStats().swim();
@@ -75,6 +79,7 @@ public class ReturnToWaterGoal extends Goal {
                     dragon.getRandom().nextInt(vertical * 2 + 1) - vertical,
                     dragon.getRandom().nextInt(horizontal * 2 + 1) - horizontal);
             if (!level.getFluidState(candidate).is(FluidTags.WATER)) continue;
+            if (!DragonRoamSwimGoal.isNearOwner(Vec3.atCenterOf(candidate), ownerPos)) continue;
             BlockState above = level.getBlockState(candidate.above());
             if (!above.isAir() && !above.getFluidState().is(FluidTags.WATER)) continue;
             double distance = candidate.distSqr(origin);

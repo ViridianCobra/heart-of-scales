@@ -5,15 +5,16 @@ import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 /**
- * Free flight and the flight AI. The JSON is one flat {@code flight} object; the codec is split into a rider group
- * and an AI group only because a record codec holds at most sixteen fields.
+ * Free flight and the flight AI. The JSON is one flat {@code flight} object; the codec is split into rider, AI and
+ * roam groups only because a record codec holds at most sixteen fields.
  */
-public record FlightStats(Rider rider, Ai ai) {
-    public static final FlightStats DEFAULT = new FlightStats(Rider.DEFAULT, Ai.DEFAULT);
+public record FlightStats(Rider rider, Ai ai, Roam roam) {
+    public static final FlightStats DEFAULT = new FlightStats(Rider.DEFAULT, Ai.DEFAULT, Roam.DEFAULT);
 
     public static final Codec<FlightStats> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Rider.CODEC.forGetter(FlightStats::rider),
-            Ai.CODEC.forGetter(FlightStats::ai)
+            Ai.CODEC.forGetter(FlightStats::ai),
+            Roam.CODEC.forGetter(FlightStats::roam)
     ).apply(instance, FlightStats::new));
 
     /**
@@ -47,25 +48,42 @@ public record FlightStats(Rider rider, Ai ai) {
         ).apply(instance, Rider::new));
     }
 
-    /** How the flight move control turns and how the roam goal picks its flights. */
-    public record Ai(float maxYawTurn, float maxPitchTurn, int roamTakeoffChance, int roamMinTicks, int roamMaxTicks,
-                     double roamMinDistance, double roamMaxDistance, int roamMinHeight, int roamMaxHeight) {
-        public static final Ai DEFAULT = new Ai(3.0f, 10.0f, 600, 300, 600, 8.0, 16.0, 3, 12);
+    /** How the flight move control flies and leans. */
+    public record Ai(double speedFactor, float maxYawTurn, float maxPitchTurn, float rollPerYawDegree) {
+        public static final Ai DEFAULT = new Ai(0.5, 3.0f, 10.0f, 20.0f);
 
         static final MapCodec<Ai> CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+                Codec.DOUBLE.optionalFieldOf("ai_speed_factor", DEFAULT.speedFactor()).forGetter(Ai::speedFactor),
                 Codec.FLOAT.optionalFieldOf("ai_max_yaw_turn", DEFAULT.maxYawTurn()).forGetter(Ai::maxYawTurn),
                 Codec.FLOAT.optionalFieldOf("ai_max_pitch_turn", DEFAULT.maxPitchTurn()).forGetter(Ai::maxPitchTurn),
-                Codec.INT.optionalFieldOf("roam_takeoff_chance", DEFAULT.roamTakeoffChance()).forGetter(Ai::roamTakeoffChance),
-                Codec.INT.optionalFieldOf("roam_min_ticks", DEFAULT.roamMinTicks()).forGetter(Ai::roamMinTicks),
-                Codec.INT.optionalFieldOf("roam_max_ticks", DEFAULT.roamMaxTicks()).forGetter(Ai::roamMaxTicks),
-                Codec.DOUBLE.optionalFieldOf("roam_min_distance", DEFAULT.roamMinDistance()).forGetter(Ai::roamMinDistance),
-                Codec.DOUBLE.optionalFieldOf("roam_max_distance", DEFAULT.roamMaxDistance()).forGetter(Ai::roamMaxDistance),
-                Codec.INT.optionalFieldOf("roam_min_height", DEFAULT.roamMinHeight()).forGetter(Ai::roamMinHeight),
-                Codec.INT.optionalFieldOf("roam_max_height", DEFAULT.roamMaxHeight()).forGetter(Ai::roamMaxHeight)
+                Codec.FLOAT.optionalFieldOf("ai_roll_per_yaw_degree", DEFAULT.rollPerYawDegree()).forGetter(Ai::rollPerYawDegree)
         ).apply(instance, Ai::new));
     }
 
-    // Flat accessors so callers read flight().roamMaxHeight() without caring about the internal split
+    /** Idle flights: when they start, how far they wander, how high, and the occasional lap of the centre. */
+    public record Roam(int takeoffChance, double wanderRadius, double ownerWanderRadius, int wanderMinTicks, int wanderMaxTicks,
+                       int cruiseMinHeight, int cruiseMaxHeight, double circleMinRadius, double circleMaxRadius,
+                       double ownerCircleMinRadius, double ownerCircleMaxRadius, int circleMinLaps, int circleMaxLaps) {
+        public static final Roam DEFAULT = new Roam(600, 32.0, 16.0, 600, 1800, 8, 20, 16.0, 32.0, 10.0, 16.0, 1, 2);
+
+        static final MapCodec<Roam> CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+                Codec.INT.optionalFieldOf("roam_takeoff_chance", DEFAULT.takeoffChance()).forGetter(Roam::takeoffChance),
+                Codec.DOUBLE.optionalFieldOf("wander_radius", DEFAULT.wanderRadius()).forGetter(Roam::wanderRadius),
+                Codec.DOUBLE.optionalFieldOf("owner_wander_radius", DEFAULT.ownerWanderRadius()).forGetter(Roam::ownerWanderRadius),
+                Codec.INT.optionalFieldOf("wander_min_ticks", DEFAULT.wanderMinTicks()).forGetter(Roam::wanderMinTicks),
+                Codec.INT.optionalFieldOf("wander_max_ticks", DEFAULT.wanderMaxTicks()).forGetter(Roam::wanderMaxTicks),
+                Codec.INT.optionalFieldOf("cruise_min_height", DEFAULT.cruiseMinHeight()).forGetter(Roam::cruiseMinHeight),
+                Codec.INT.optionalFieldOf("cruise_max_height", DEFAULT.cruiseMaxHeight()).forGetter(Roam::cruiseMaxHeight),
+                Codec.DOUBLE.optionalFieldOf("circle_min_radius", DEFAULT.circleMinRadius()).forGetter(Roam::circleMinRadius),
+                Codec.DOUBLE.optionalFieldOf("circle_max_radius", DEFAULT.circleMaxRadius()).forGetter(Roam::circleMaxRadius),
+                Codec.DOUBLE.optionalFieldOf("owner_circle_min_radius", DEFAULT.ownerCircleMinRadius()).forGetter(Roam::ownerCircleMinRadius),
+                Codec.DOUBLE.optionalFieldOf("owner_circle_max_radius", DEFAULT.ownerCircleMaxRadius()).forGetter(Roam::ownerCircleMaxRadius),
+                Codec.INT.optionalFieldOf("circle_min_laps", DEFAULT.circleMinLaps()).forGetter(Roam::circleMinLaps),
+                Codec.INT.optionalFieldOf("circle_max_laps", DEFAULT.circleMaxLaps()).forGetter(Roam::circleMaxLaps)
+        ).apply(instance, Roam::new));
+    }
+
+    // Flat accessors so callers read flight().cruiseMaxHeight() without caring about the internal split
 
     public double riddenSpeedFactor() { return rider.riddenSpeedFactor(); }
     public double ascendInput() { return rider.ascendInput(); }
@@ -82,13 +100,21 @@ public record FlightStats(Rider rider, Ai ai) {
     public float freeCamLevelRate() { return rider.freeCamLevelRate(); }
     public float freeCamReleaseTurnRate() { return rider.freeCamReleaseTurnRate(); }
     public float freeCamHeadYawLimit() { return rider.freeCamHeadYawLimit(); }
+    public double aiSpeedFactor() { return ai.speedFactor(); }
     public float aiMaxYawTurn() { return ai.maxYawTurn(); }
     public float aiMaxPitchTurn() { return ai.maxPitchTurn(); }
-    public int roamTakeoffChance() { return ai.roamTakeoffChance(); }
-    public int roamMinTicks() { return ai.roamMinTicks(); }
-    public int roamMaxTicks() { return ai.roamMaxTicks(); }
-    public double roamMinDistance() { return ai.roamMinDistance(); }
-    public double roamMaxDistance() { return ai.roamMaxDistance(); }
-    public int roamMinHeight() { return ai.roamMinHeight(); }
-    public int roamMaxHeight() { return ai.roamMaxHeight(); }
+    public float aiRollPerYawDegree() { return ai.rollPerYawDegree(); }
+    public int roamTakeoffChance() { return roam.takeoffChance(); }
+    public double wanderRadius() { return roam.wanderRadius(); }
+    public double ownerWanderRadius() { return roam.ownerWanderRadius(); }
+    public int wanderMinTicks() { return roam.wanderMinTicks(); }
+    public int wanderMaxTicks() { return roam.wanderMaxTicks(); }
+    public int cruiseMinHeight() { return roam.cruiseMinHeight(); }
+    public int cruiseMaxHeight() { return roam.cruiseMaxHeight(); }
+    public double circleMinRadius() { return roam.circleMinRadius(); }
+    public double circleMaxRadius() { return roam.circleMaxRadius(); }
+    public double ownerCircleMinRadius() { return roam.ownerCircleMinRadius(); }
+    public double ownerCircleMaxRadius() { return roam.ownerCircleMaxRadius(); }
+    public int circleMinLaps() { return roam.circleMinLaps(); }
+    public int circleMaxLaps() { return roam.circleMaxLaps(); }
 }
