@@ -4,6 +4,8 @@ Each branch carries its own copy. What a version contains on a given target is w
 When a version is released, drop "(Unreleased)" from its heading and start the next version above it.
 
 ## 0.0.3 (Unreleased)
+- The worn dragon scale now reads more than eggs. Dragons show their health, whether they are a baby, and whether they are wild or who tamed them and what they were told to do. Dracip and amorberry show how far they have grown and warn when it is too dark for them to grow; mutation mushrooms show their name. Eggs in a nest show how to start hatching, the time left while hatching, or why hatching is paused. A loose egg says it needs a nest.
+- Fixed dracip seeds never dropping from grass.
 
 ## 0.0.2
 - Water dragons swim with their own animation instead of the flight one.
