@@ -8,6 +8,12 @@
   "stats": {
     "swim": {
       "accel": 0.08
+    },
+    "breath": {
+      "damage": 2.5,
+      "range": 8.0,
+      "width": 5.0,
+      "push": 0.8
     }
   }
 }

@@ -6,6 +6,7 @@ import net.basilisk.heartofscales.registry.ModBlockEntities;
 import net.basilisk.heartofscales.registry.ModBlocks;
 import net.basilisk.heartofscales.registry.ModCreativeTabs;
 import net.basilisk.heartofscales.registry.ModEntities;
+import net.basilisk.heartofscales.registry.ModParticles;
 import net.basilisk.heartofscales.registry.ModItems;
 import net.basilisk.heartofscales.registry.ModLootModifiers;
 import net.basilisk.heartofscales.registry.ModMenuTypes;
@@ -28,6 +29,7 @@ public class HeartOfScales {
         ModItems.ITEMS.register(modEventBus);
         ModBlockEntities.BLOCK_ENTITIES.register(modEventBus);
         ModEntities.ENTITY_TYPES.register(modEventBus);
+        ModParticles.PARTICLE_TYPES.register(modEventBus);
         modEventBus.addListener(ModEntities::registerAttributes);
         ModCreativeTabs.TABS.register(modEventBus);
         ModLootModifiers.LOOT_MODIFIERS.register(modEventBus);

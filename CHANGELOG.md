@@ -3,7 +3,9 @@
 Each branch carries its own copy. What a version contains on a given target is whatever is listed under it on that branch.
 When a version is released, drop "(Unreleased)" from its heading and start the next version above it.
 
-## 0.0.2 (Unreleased)
+## 0.0.3 (Unreleased)
+
+## 0.0.2
 - Water dragons swim with their own animation instead of the flight one.
 - Right-click a dragon beacon to see every dragon that lives there: yours first, then other players', oldest tamed first. Each row shows where the dragon is (home, away, not loaded, died or removed), its coordinates and what it was told to do. Dragons that are not loaded show where they were last seen.
 - Dead dragons stay on their beacon's list with how they died until their owner clears them with the ✕.
@@ -11,6 +13,7 @@ When a version is released, drop "(Unreleased)" from its heading and start the n
 - Fixed the nest and egg being drawn full block size in the inventory, in hand and on the ground, and the dropped nest sinking into the ground.
 - Fixed hatching messages showing their translation key instead of text.
 - Dragon chow, one per subspecies, crafted from a bowl, dracip petals and two ingredients. Each subspecies' chow is now its favourite food, and feeding it gives the bowl back. The old cooked favourites are still ordinary dragon food. The Codex has a Dragon Chow page with the recipes.
+- Dragon breath. Hold Dragon Breath (R) while riding to breathe at whatever your crosshair is on. Land dragons breathe a dust stream full of rocks, air dragons blast a stream of air that lifts what it hits, and water dragons a stream of water that drives it into the ground. All three do damage and never hit you, your other pets or blocks, and the push respects no-PvP servers and spawn protection. Breath has its own meter under the stamina bar, coloured by breath type, and locks out in red when it runs dry until a quarter has come back. Each subspecies' breath can be changed in its species file.
 
 ## 0.0.1
 - Dragon egg block and item carrying a subspecies, tinted per species.

@@ -188,6 +188,11 @@
 					]
 				},
 				{
+					"name": "mouth",
+					"parent": "head",
+					"pivot": [0, 11.1, -94]
+				},
+				{
 					"name": "legs",
 					"parent": "all",
 					"pivot": [0, 20, 5]

@@ -27,6 +27,8 @@ public final class ModKeyMappings {
             KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, InputConstants.KEY_F, CATEGORY);
     public static final KeyMapping FREE_CAM = new KeyMapping("key." + HeartOfScales.MOD_ID + ".free-cam",
             KeyConflictContext.IN_GAME, InputConstants.Type.MOUSE, GLFW.GLFW_MOUSE_BUTTON_MIDDLE, CATEGORY);
+    public static final KeyMapping BREATHE = new KeyMapping("key." + HeartOfScales.MOD_ID + ".breathe",
+            KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, InputConstants.KEY_R, CATEGORY);
 
     @SubscribeEvent
     public static void register(RegisterKeyMappingsEvent event) {
@@ -34,6 +36,7 @@ public final class ModKeyMappings {
         event.register(DESCEND);
         event.register(FLIGHT_MODE);
         event.register(FREE_CAM);
+        event.register(BREATHE);
     }
 
     private ModKeyMappings() {}

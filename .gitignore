@@ -26,6 +26,7 @@ forge*changelog.txt
 
 # run directories and local logs
 run-data
+run-gametest
 logs
 *.log
 mcmodsrepo

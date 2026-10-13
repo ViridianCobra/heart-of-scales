@@ -8,6 +8,12 @@
   "stats": {
     "swim": {
       "ridden_responsiveness": 0.2
+    },
+    "breath": {
+      "damage": 2.5,
+      "range": 8.0,
+      "width": 5.0,
+      "push": 0.8
     }
   }
 }

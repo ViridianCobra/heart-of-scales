@@ -10,6 +10,12 @@
     "flight": {
       "ascend_input": 0.9,
       "free_responsiveness": 0.5
+    },
+    "breath": {
+      "damage": 2.0,
+      "range": 10.0,
+      "width": 6.0,
+      "push": 0.8
     }
   }
 }
