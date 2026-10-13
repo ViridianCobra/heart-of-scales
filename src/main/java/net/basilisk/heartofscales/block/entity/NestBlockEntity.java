@@ -27,6 +27,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -35,6 +36,9 @@ public class NestBlockEntity extends BlockEntity {
     private static final String TAG_HATCHING = "Hatching";
     private static final String TAG_HATCH_TICKS = "HatchTicks";
     private static final String TAG_HATCHER = "Hatcher";
+    // Sync only, never saved
+    private static final String TAG_HATCH_TOTAL = "HatchTotal";
+    private static final String TAG_CONDITION_MET = "ConditionMet";
     private static final int CONDITION_CHECK_INTERVAL = 20;
     private static final int PARTICLE_INTERVAL = 40;
 
@@ -47,6 +51,8 @@ public class NestBlockEntity extends BlockEntity {
 
     private boolean conditionMet;
     private int conditionCheckCooldown;
+    /** The server's hatch time as last synced. Only meaningful on the client, which can't read the server config. */
+    private int syncedHatchTotal;
 
     public NestBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.NEST.get(), pos, state);
@@ -67,6 +73,17 @@ public class NestBlockEntity extends BlockEntity {
         return hatching;
     }
 
+    /** Whether the hatch condition held at the last check. On the client, as of the last sync. */
+    public boolean isConditionMet() {
+        return conditionMet;
+    }
+
+    /** Ticks left until the egg hatches, counting only time with the condition met. On the client, as of the last sync. */
+    public int hatchTicksLeft() {
+        int total = level != null && level.isClientSide ? syncedHatchTotal : HeartOfScalesConfig.HATCH_TIME_TICKS.get();
+        return Math.max(0, total - hatchTicks);
+    }
+
     /** The hatch condition of the egg's subspecies, if there is an egg and its subspecies is known. */
     public Optional<HatchCondition> hatchCondition() {
         if (egg == null || level == null) return Optional.empty();
@@ -77,8 +94,10 @@ public class NestBlockEntity extends BlockEntity {
         hatching = true;
         hatchTicks = 0;
         hatcher = player.getUUID();
+        conditionMet = true;
         conditionCheckCooldown = 0;
         setChanged();
+        syncToClients();
     }
 
     private void stopHatching() {
@@ -98,6 +117,8 @@ public class NestBlockEntity extends BlockEntity {
         if (--conditionCheckCooldown <= 0) {
             conditionCheckCooldown = CONDITION_CHECK_INTERVAL;
             conditionMet = hatchCondition().map(condition -> condition.test(serverLevel, worldPosition)).orElse(false);
+            // Once a second keeps the scale's countdown and paused state current
+            syncToClients();
         }
         if (conditionMet) {
             hatchTicks++;
@@ -130,6 +151,12 @@ public class NestBlockEntity extends BlockEntity {
         serverLevel.setBlock(worldPosition, getBlockState().setValue(NestBlock.HAS_EGG, false), Block.UPDATE_ALL);
     }
 
+    private void syncToClients() {
+        if (level != null && !level.isClientSide) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
+        }
+    }
+
     private void spawnParticles(ServerLevel serverLevel, ParticleOptions particle, int count) {
         serverLevel.sendParticles(particle, worldPosition.getX() + 0.5, worldPosition.getY() + 0.7, worldPosition.getZ() + 0.5,
                 count, 0.25, 0.3, 0.25, 0.0);
@@ -153,18 +180,29 @@ public class NestBlockEntity extends BlockEntity {
     @Override
     public void load(CompoundTag tag) {
         super.load(tag);
+        DragonGenome previousEgg = egg;
         egg = tag.contains(TAG_EGG) ? GenomeNbt.load(tag.getCompound(TAG_EGG)) : null;
         hatching = tag.getBoolean(TAG_HATCHING);
         hatchTicks = tag.getInt(TAG_HATCH_TICKS);
         hatcher = tag.hasUUID(TAG_HATCHER) ? tag.getUUID(TAG_HATCHER) : null;
-        if (level != null && level.isClientSide) {
+        if (tag.contains(TAG_HATCH_TOTAL)) {
+            syncedHatchTotal = tag.getInt(TAG_HATCH_TOTAL);
+            conditionMet = tag.getBoolean(TAG_CONDITION_MET);
+        }
+        // Redraw for the egg tint, but not on the once-a-second hatching syncs
+        if (level != null && level.isClientSide && !Objects.equals(previousEgg, egg)) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), Block.UPDATE_CLIENTS);
         }
     }
 
     @Override
     public CompoundTag getUpdateTag() {
-        return saveWithoutMetadata();
+        CompoundTag tag = saveWithoutMetadata();
+        if (hatching) {
+            tag.putInt(TAG_HATCH_TOTAL, HeartOfScalesConfig.HATCH_TIME_TICKS.get());
+            tag.putBoolean(TAG_CONDITION_MET, conditionMet);
+        }
+        return tag;
     }
 
     @Override
